@@ -28,7 +28,7 @@ _start:
     jc disk_error               
 
     ; --- BLINDAJE CRÍTICO DE HARDWARE ---
-    cli                         ; APAGAR INTERRUPCIONES: Evita que el reloj de QEMU rompa la transición
+    cli                         ; APAGAR INTERRUPCIONES: Evita interferencias del reloj de QEMU
 
     ; --- INTERROGAR CPU (CPUID) ---
     pushfd                      
@@ -81,7 +81,7 @@ _start:
     mov cr0, eax
 
     lgdt [gdt64_descriptor]     
-    jmp 0x08:0x10080            
+    jmp dword 0x08:0x10080      ; CORREGIDO: 'dword' previene el truncamiento a 16-bits
 
 switch_to_32bit:
     mov eax, cr0
@@ -89,7 +89,7 @@ switch_to_32bit:
     mov cr0, eax
 
     lgdt [gdt32_descriptor]     
-    jmp 0x08:0x10040            
+    jmp dword 0x08:0x10040      ; CORREGIDO: 'dword' previene el truncamiento a 16-bits
 
 disk_error:
 no_cpuid:
