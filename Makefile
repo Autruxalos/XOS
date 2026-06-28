@@ -1,5 +1,5 @@
 # =============================================================================
-# MAKEFILE MAESTRO DE XOS - MONORREPOSITORIO CORREGIDO (TAMAÑO FIJO)
+# MAKEFILE MAESTRO DE XOS - CONFIGURACIÓN DE SEGURIDAD (OPCIÓN B)
 # =============================================================================
 
 SRC_DIR   = src
@@ -17,35 +17,34 @@ image:
 	# 1. Compilar Cargador de Arranque MBR (Sector 0)
 	nasm -f bin $(SRC_DIR)/boot/xboot.asm -o $(BUILD_DIR)/xboot.bin
 
-	# 2. Compilar Exokernel Base Polimórfico
+	# 2. Compilar Exokernel Base Polimórfico (Sector 1)
 	nasm -f bin $(SRC_DIR)/kernel/xkernel.asm -o $(BUILD_DIR)/xkernel.bin
 
-	# 3. Compilar Dependencia: Driver del Sistema de Archivos EXFS
-	nasm -f bin $(SRC_DIR)/kernel/drivers/exfs.asm -o $(BUILD_DIR)/exfs.bin
-
-	# 4. Compilar Dependencia: Subsistema Init (EXIT)
+	# 3. Compilar Subsistema Init (Pasado al Sector 2)
 	nasm -f bin $(SRC_DIR)/init/exit.asm -o $(BUILD_DIR)/exit.bin
 
-	# 5. Compilar Dependencia: Shell Interactiva Multi-Arquitectura (XSH)
+	# 4. Compilar Shell Interactiva Multi-Arquitectura
 	nasm -f bin $(SRC_DIR)/apps/xsh.asm -o $(BUILD_DIR)/xsh.bin
 
-	@echo "--- CONCATENANDO Y AJUSTANDO IMAGEN FÍSICA DE DISCO ---"
-	# Fusionamos los componentes binarios en orden directo
+	# 5. Compilar Driver EXFS (Módulo de almacenamiento aislado al final)
+	nasm -f bin $(SRC_DIR)/kernel/drivers/exfs.asm -o $(BUILD_DIR)/exfs.bin
+
+	@echo "--- CONCATENANDO SECTORES EN ORDEN OPERATIVO SEGURO ---"
+	# CORRECCIÓN DE FLUJO: EXFS va al final para evitar ejecuciones accidentales
 	cat $(BUILD_DIR)/xboot.bin \
 	    $(BUILD_DIR)/xkernel.bin \
-	    $(BUILD_DIR)/exfs.bin \
 	    $(BUILD_DIR)/exit.bin \
-	    $(BUILD_DIR)/xsh.bin > $(IMAGE_OUT)
+	    $(BUILD_DIR)/xsh.bin \
+	    $(BUILD_DIR)/exfs.bin > $(IMAGE_OUT)
 
-	# CALIBRACIÓN REAL: Forzamos el archivo final a medir exactamente 8704 bytes
-	# (1 sector del MBR + 16 sectores leídos por la BIOS = 17 sectores de 512 bytes)
+	# Forzamos tamaño de imagen limpia para SeaBIOS (17 sectores de 512 bytes)
 	truncate -s 8704 $(IMAGE_OUT)
-	@echo "¡Éxito! Archivo unificado de tamaño fijo listo en: $(IMAGE_OUT)"
+	@echo "¡Éxito! Imagen operativa estructurada en: $(IMAGE_OUT)"
 
 run: image
-	@echo "--- LANZANDO CONFIGURACIÓN DE PRUEBA EN QEMU ---"
+	@echo "--- EJECUTANDO INSTANCIA ESTABLE EN QEMU ---"
 	qemu-system-x86_64 -drive format=raw,file=$(IMAGE_OUT)
 
 clean:
-	@echo "--- LIMPIANDO ESTRUCTURAS TEMPORALES ---"
+	@echo "--- ELIMINANDO BINARIOS LOCALES ---"
 	rm -rf $(BUILD_DIR)
