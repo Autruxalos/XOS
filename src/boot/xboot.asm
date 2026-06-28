@@ -27,6 +27,9 @@ _start:
     int 0x13                    
     jc disk_error               
 
+    ; --- BLINDAJE CRÍTICO DE HARDWARE ---
+    cli                         ; APAGAR INTERRUPCIONES: Evita que el reloj de QEMU rompa la transición
+
     ; --- INTERROGAR CPU (CPUID) ---
     pushfd                      
     pop eax
@@ -52,37 +55,35 @@ _start:
     jz switch_to_32bit          
 
     ; --- ENRUTAMIENTO HACIA MODO LARGO (64-BITS) ---
-    ; Configuración de Tablas de Paginación Identitaria en zona segura (0x9000)
     mov edi, 0x9000
     xor eax, eax
     mov ecx, 3072
     rep stosd
 
-    mov dword [0x9000], 0xA003  ; PML4 -> PDPT
-    mov dword [0xA000], 0xB003  ; PDPT -> PD
-    mov dword [0xB000], 0x0083  ; PD Mapea primeros 2MB directos
+    mov dword [0x9000], 0xA003  
+    mov dword [0xA000], 0xB003  
+    mov dword [0xB000], 0x0083  
 
     mov eax, 0x9000
     mov cr3, eax
 
     mov eax, cr4
-    or eax, 1 << 5              ; Activar PAE
+    or eax, 1 << 5              
     mov cr4, eax
 
     mov ecx, 0xC0000080
     rdmsr
-    or eax, 1 << 8              ; Activar LME (Long Mode Enable)
+    or eax, 1 << 8              
     wrmsr
 
     mov eax, cr0
-    or eax, 1 << 31 | 1 << 0    ; Activar Paginación + Modo Protegido
+    or eax, 1 << 31 | 1 << 0    
     mov cr0, eax
 
     lgdt [gdt64_descriptor]     
     jmp 0x08:0x10080            
 
 switch_to_32bit:
-    cli                         
     mov eax, cr0
     or eax, 1                   
     mov cr0, eax
