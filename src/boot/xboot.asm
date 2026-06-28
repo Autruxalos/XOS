@@ -17,7 +17,7 @@ _xboot_start:
     or al, 2
     out 0x92, al
 
-    ; 2. Cargar el súper kernel en la dirección física 0x10000
+    ; 2. Cargar el súper kernel en la dirección física 0x10000 (vía ES:BX)
     mov ax, 0x1000
     mov es, ax
     xor bx, bx
@@ -32,12 +32,19 @@ _xboot_start:
     jc .error
 
     ; 3. Inicializar Modo Protegido de 32 bits
+    xor eax, eax
+    mov ax, ds
+    shl eax, 4
+    add eax, gdt32_start
+    mov [gdt32_desc + 2], eax   ; Calcular la dirección lineal real de la GDT
+
     lgdt [gdt32_desc]
     mov eax, cr0
     or eax, 1
     mov cr0, eax
 
-    jmp 0x08:.pmode
+    ; Salto lejano forzado de 16 bits a segmento de 32 bits para evitar warnings
+    jmp word 0x08:.pmode
 
 [BITS 32]
 .pmode:
@@ -52,8 +59,8 @@ _xboot_start:
     mov ecx, 4096
     rep movsd
 
-    ; Salto final al punto de entrada
-    jmp 0x100000
+    ; Salto definitivo al punto de entrada absoluto de 32 bits
+    jmp dword 0x100000
 
 .error:
     hlt
@@ -62,13 +69,13 @@ _xboot_start:
 align 4
 gdt32_start:
     dq 0x0000000000000000       ; Descriptor nulo
-    dq 0x00CF9A000000FFFF       ; Código plano de 32 bits (Selector 0x08)
-    dq 0x00CF92000000FFFF       ; Datos planos de 32 bits (Selector 0x10)
+    dq 0x00CF9A000000FFFF       ; Selector de código plano de 32 bits (0x08)
+    dq 0x00CF92000000FFFF       ; Selector de datos plano de 32 bits (0x10)
 gdt32_end:
 
 gdt32_desc:
     dw gdt32_end - gdt32_start - 1
-    dd gdt32_start              ; Dirección en formato de 32 bits limpia
+    dd 0                        ; Dirección dinámica calculada en tiempo de ejecución
 
 times 510-($-$$) db 0
 dw 0xAA55
