@@ -11,16 +11,13 @@ org 0x30000
 ; =============================================================================
 bits 16
 _exit_entry_16:
-    ; 1. Clear 16-bit environment variables or flags
     mov ax, 0x0000
     mov [init_status], ax
 
-    ; 2. Print initialization status using BIOS
     mov si, msg_exit_16
     call print_string_16
 
-    ; 3. Hand over execution directly to the 16-bit Shell (MAPPED AT 0x20000)
-    jmp 0x20000
+    jmp 0x20000                 ; Saltar a la Shell de 16-bits (Offset 0x00)
 
 print_string_16:
     mov ah, 0x0E
@@ -33,22 +30,20 @@ print_string_16:
 .done:
     ret
 
-msg_exit_16 db '-> EXIT: Environment synchronized (16-bit).', 13, 10, 0
+msg_exit_16 db '-> EXIT: 16-bit synch.', 13, 10, 0
 
 
 ; =============================================================================
-; OFFSET 0x20: 32-BIT PROTECTED MODE INITIALIZATION
+; OFFSET 0x40 (64 bytes): 32-BIT PROTECTED MODE INITIALIZATION
 ; =============================================================================
-times 32 - ($ - $$) db 0        ; Strict alignment block to hit offset 0x20
+times 64 - ($ - $$) db 0        ; Alineación segura a 64 bytes
 bits 32
 _exit_entry_32:
-    ; 1. Mark status as 32-bit active
     mov dword [init_status], 32
 
-    ; 2. Print status message directly to VGA Text Memory (Line 5)
     mov esi, msg_exit_32
-    mov edi, 0xB8000 + 480      ; 80 chars * 2 bytes * 3 lines down
-    mov ah, 0x07                ; Color: Light Gray
+    mov edi, 0xB8000 + 480      ; Línea 4 de la memoria de video VGA
+    mov ah, 0x07
 .loop:
     lodsb
     cmp al, 0
@@ -57,26 +52,23 @@ _exit_entry_32:
     add edi, 2
     jmp .loop
 .done:
-    ; 3. Hand over execution directly to the 32-bit Shell (MAPPED AT 0x20020)
-    jmp 0x20020
+    jmp 0x20040                 ; Saltar a la Shell de 32-bits (Offset 0x40)
 
-msg_exit_32 db '-> EXIT: Environment synchronized (32-bit Protected Mode).', 0
+msg_exit_32 db '-> EXIT: 32-bit synch.', 0
 
 
 ; =============================================================================
-; OFFSET 0x40: 64-BIT LONG MODE INITIALIZATION
+; OFFSET 0x80 (128 bytes): 64-BIT LONG MODE INITIALIZATION
 ; =============================================================================
-times 64 - ($ - $$) db 0        ; Strict alignment block to hit offset 0x40
+times 128 - ($ - $$) db 0       ; Alineación segura a 128 bytes
 bits 64
 _exit_entry_64:
-    ; 1. Mark status as 64-bit active using extended RAX registers
     mov rax, 64
     mov [init_status], rax
 
-    ; 2. Print status message directly to VGA Text Memory (Line 6)
     mov rsi, msg_exit_64
-    mov rdi, 0xB8000 + 640      ; 80 chars * 2 bytes * 4 lines down
-    mov ah, 0x0F                ; Color: Bright White
+    mov rdi, 0xB8000 + 640      ; Línea 5 de la memoria de video VGA
+    mov ah, 0x0F
 .loop:
     lodsb
     cmp al, 0
@@ -85,13 +77,10 @@ _exit_entry_64:
     add rdi, 2
     jmp .loop
 .done:
-    ; 3. Hand over execution directly to the 64-bit Shell (MAPPED AT 0x20040)
-    jmp 0x20040
+    jmp 0x20080                 ; Saltar a la Shell de 64-bits (Offset 0x80)
 
-msg_exit_64 db '-> EXIT: Environment synchronized (64-bit Long Mode Nativo).', 0
+msg_exit_64 db '-> EXIT: 64-bit synch.', 0
 
-; =============================================================================
-; GLOBAL FIXED STORAGE DATA (Accessible by any mode)
-; =============================================================================
+; --- VARIABLES ---
 align 8
-init_status: dq 0               ; 8-byte variable holding initialization token
+init_status: dq 0
