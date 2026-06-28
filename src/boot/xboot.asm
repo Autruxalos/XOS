@@ -19,7 +19,7 @@ _start:
     xor bx, bx                  ; Offset de destino = 0
 
     mov ah, 0x02                ; Función BIOS: Leer sectores desde el disco
-    mov al, 64                  ; INTERRUPCIÓN FORZADA: Leer 64 sectores (32 KB del sistema operativo)
+    mov al, 16                  ; ESTABILIZACIÓN: Leer exactamente 16 sectores (8 KB)
     mov ch, 0                   ; Cilindro 0
     mov dh, 0                   ; Cabeza 0
     mov cl, 2                   ; Empezar en el Sector 2 (Sector 1 es el MBR)
@@ -52,14 +52,10 @@ _start:
     jz switch_to_32bit          ; Si el bit es 0, no soporta 64 bits de forma nativa
 
     ; --- ENRUTAMIENTO HACIA MODO LARGO (64-BITS) ---
-    ; Habilitar PAE (Physical Address Extension) obligatorio para 64 bits
     mov eax, cr4
     or eax, 1 << 5
     mov cr4, eax
 
-    ; Cargar las tablas de paginación virtuales base (Mapeo de Identidad Simulado)
-    ; Nota: En producción, aquí se inyecta el puntero CR3 de tu paginación
-    
     ; Activar el bit de Modo Largo en el registro EFER MSR
     mov ecx, 0xC0000080
     rdmsr
