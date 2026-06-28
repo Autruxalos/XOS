@@ -1,4 +1,3 @@
-
 ; =============================================================================
 ; XBOOT - EXOKERNEL BOOTLOADER [XSPEC-0001]
 ; Arquitectura: x86 Real Mode (16-bit)
