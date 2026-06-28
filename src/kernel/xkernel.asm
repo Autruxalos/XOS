@@ -1856,3 +1856,12 @@ xsh_cmd_halt:
     cli
     hlt
     jmp $
+
+; ====================================================================
+; FIN DE TU SÚPER KERNEL ORIGINAL (Línea ~1800)
+; ====================================================================
+
+; Inyectar los submódulos de la arquitectura y la shell sin romper las etiquetas
+%include "src/libs/exfs.asm"
+%include "src/init/exit.asm"
+%include "src/apps/xsh.asm"
