@@ -1,157 +1,370 @@
 ; =============================================================================
-; XSH - SHELL INTERACTIVA MULTI-ARQUITECTURA (ENTORNO NATIVO DE 64-BITS)
+; XSH - SHELL INTERACTIVA FAT BINARY (16-BIT / 32-BIT / 64-BIT)
 ; =============================================================================
+; Este archivo contiene el código máquina nativo para las 3 arquitecturas.
+; Comparten las mismas funciones lógicas, pero usan los registros y el 
+; direccionamiento de memoria correctos para cada era de procesadores.
 
-bits 64                         ; Asegura la generación de opcodes de 64-bits
+; =============================================================================
+; [ MODO REAL - 16 BITS ] -> COMPATIBILIDAD 8086
+; =============================================================================
+[BITS 16]
 
-_shell_start:
-    ; Configurar un offset inicial para el cursor en la memoria de video VGA.
-    ; Usamos 480 (Línea 6, Columna 0) para no sobreescribir los mensajes del Kernel.
+_shell_16:
+    ; Configurar segmentos para Modo Real
+    mov ax, cs
+    mov ds, ax
+    mov es, ax
+
     mov word [cursor_offset], 480
+    mov si, prompt_16
+    call print_string_16
 
-    ; Mostrar el prompt de bienvenida inicial
-    mov rsi, prompt_msg
-    call print_string
+shell_loop_16:
+    in al, 0x64
+    test al, 1
+    jz shell_loop_16
 
-shell_loop:
-    ; --- 1. POLLING DEL CONTROLADOR DE TECLADO ---
-    in al, 0x64                 ; Leer el registro de estado del Status Register (Puerto 0x64)
-    test al, 1                  ; Verificar el Bit 0 (Output Buffer Full)
-    jz shell_loop               ; Si es 0, no hay tecla disponible; seguir esperando
-
-    ; --- 2. LEER EL SCAN CODE REAL ---
-    in al, 0x60                 ; Leer el byte de la tecla presionada (Puerto 0x60)
-
-    ; Ignorar los "Break Codes" (cuando se suelta una tecla, el bit 7 está en 1)
+    in al, 0x60
     test al, 0x80
-    jnz shell_loop              ; Si se soltó la tecla, ignorar y continuar el bucle
+    jnz shell_loop_16
 
-    ; --- 3. FILTRADO DE TECLAS ESPECIALES ---
-    cmp al, 0x1C                ; Scan Code de la tecla ENTER
-    je handle_enter
+    cmp al, 0x1C                ; ENTER
+    je handle_enter_16
+    cmp al, 0x0E                ; BACKSPACE
+    je handle_backspace_16
+    cmp al, 0x39                ; ESPACIO
+    je handle_space_16
+    cmp al, 0x3A                
+    ja shell_loop_16
 
-    cmp al, 0x0E                ; Scan Code de la tecla BACKSPACE
-    je handle_backspace
+    mov bx, ax
+    xor bh, bh
+    mov al, [scan_to_ascii + bx]
+    cmp al, 0
+    je shell_loop_16
+    call print_char_16
+    jmp shell_loop_16
 
-    cmp al, 0x39                ; Scan Code de la barra ESPACIADORA
-    je handle_space
+handle_enter_16:
+    call next_line_16
+    mov si, prompt_16
+    call print_string_16
+    jmp shell_loop_16
 
-    ; --- 4. TRADUCCIÓN A ASCII MEDIANTE TABLA ---
-    cmp al, 0x3A                ; Limitar la lectura a nuestra tabla básica de caracteres
-    ja shell_loop               ; Si el Scan Code supera el mapa, ignorar
+handle_backspace_16:
+    call do_backspace_16
+    jmp shell_loop_16
 
-    movzx rbx, al
-    lea rdi, [scan_to_ascii]
-    mov al, [rdi + rbx]         ; Buscar el carácter ASCII correspondiente
-    cmp al, 0                   ; Si da 0, es una tecla no mapeada (como Shift o Ctrl)
-    je shell_loop
-
-echo_character:
-    call print_char             ; Pintar el carácter ASCII en pantalla
-    jmp shell_loop              ; Volver al bucle de escucha
-
-; --- MANEJADORES DE TECLAS ESPECIALES ---
-
-handle_enter:
-    call next_line              ; Saltar de línea en la pantalla VGA
-    mov rsi, prompt_msg
-    call print_string           ; Volver a imprimir la línea de comandos
-    jmp shell_loop
-
-handle_backspace:
-    call do_backspace           ; Retroceder y borrar el carácter físico
-    jmp shell_loop
-
-handle_space:
+handle_space_16:
     mov al, ' '
-    call print_char             ; Imprimir espacio en blanco común
-    jmp shell_loop
+    call print_char_16
+    jmp shell_loop_16
 
-; =============================================================================
-; SUBRUTINAS DE VIDEO VGA NATIVAS DE 64-BITS (Dirección Física: 0xB8000)
-; =============================================================================
-
-print_string:
-    ; Imprime cadenas de texto terminadas en byte 0. Puntero origen en RSI.
+print_string_16:
 .loop:
-    lodsb                       ; Carga el byte de [RSI] en AL e incrementa RSI
+    lodsb
     cmp al, 0
     je .done
-    call print_char
+    call print_char_16
     jmp .loop
 .done:
     ret
 
-print_char:
-    ; Imprime un único carácter contenido en AL en la posición actual del cursor.
+print_char_16:
+    push bx
+    push es
+    mov bx, 0xB800              ; En 16-bits usamos segmentos para llegar a VGA
+    mov es, bx
+    mov bx, [cursor_offset]
+    shl bx, 1
+    mov byte [es:bx], al
+    mov byte [es:bx+1], 0x0E
+    inc word [cursor_offset]
+    cmp word [cursor_offset], 2000
+    jb .end
+    mov word [cursor_offset], 0
+.end:
+    pop es
+    pop bx
+    ret
+
+next_line_16:
+    push ax
+    push bx
+    push dx
+    mov ax, [cursor_offset]
+    mov bx, 80
+    xor dx, dx
+    div bx
+    inc ax
+    cmp ax, 25
+    jb .matrix_ok
+    xor ax, ax
+.matrix_ok:
+    mul bx
+    mov [cursor_offset], ax
+    pop dx
+    pop bx
+    pop ax
+    ret
+
+do_backspace_16:
+    push bx
+    push es
+    mov bx, [cursor_offset]
+    cmp bx, 480
+    jbe .blocked
+    dec bx
+    mov [cursor_offset], bx
+    shl bx, 1
+    mov ax, 0xB800
+    mov es, ax
+    mov byte [es:bx], ' '
+    mov byte [es:bx+1], 0x0E
+.blocked:
+    pop es
+    pop bx
+    ret
+
+align 16
+
+; =============================================================================
+; [ MODO PROTEGIDO - 32 BITS ] -> COMPATIBILIDAD i386
+; =============================================================================
+[BITS 32]
+
+_shell_32:
+    mov dword [cursor_offset], 480
+    mov esi, prompt_32
+    call print_string_32
+
+shell_loop_32:
+    in al, 0x64
+    test al, 1
+    jz shell_loop_32
+    in al, 0x60
+    test al, 0x80
+    jnz shell_loop_32
+
+    cmp al, 0x1C
+    je handle_enter_32
+    cmp al, 0x0E
+    je handle_backspace_32
+    cmp al, 0x39
+    je handle_space_32
+    cmp al, 0x3A
+    ja shell_loop_32
+
+    movzx ebx, al
+    mov al, [scan_to_ascii + ebx]
+    cmp al, 0
+    je shell_loop_32
+    call print_char_32
+    jmp shell_loop_32
+
+handle_enter_32:
+    call next_line_32
+    mov esi, prompt_32
+    call print_string_32
+    jmp shell_loop_32
+
+handle_backspace_32:
+    call do_backspace_32
+    jmp shell_loop_32
+
+handle_space_32:
+    mov al, ' '
+    call print_char_32
+    jmp shell_loop_32
+
+print_string_32:
+.loop:
+    mov al, [esi]
+    cmp al, 0
+    je .done
+    call print_char_32
+    inc esi
+    jmp .loop
+.done:
+    ret
+
+print_char_32:
+    push ebx
+    push ecx
+    mov ecx, [cursor_offset]
+    shl ecx, 1
+    add ecx, 0xB8000            ; En 32-bits usamos memoria plana
+    mov [ecx], al
+    mov byte [ecx+1], 0x0A      ; Verde brillante para diferenciar 32-bits
+    inc dword [cursor_offset]
+    cmp dword [cursor_offset], 2000
+    jb .end
+    mov dword [cursor_offset], 0
+.end:
+    pop ecx
+    pop ebx
+    ret
+
+next_line_32:
+    push eax
+    push ebx
+    push edx
+    mov eax, [cursor_offset]
+    mov ebx, 80
+    xor edx, edx
+    div ebx
+    inc eax
+    cmp eax, 25
+    jb .matrix_ok
+    xor eax, eax
+.matrix_ok:
+    mul ebx
+    mov [cursor_offset], eax
+    pop edx
+    pop ebx
+    pop eax
+    ret
+
+do_backspace_32:
+    push ebx
+    mov ebx, [cursor_offset]
+    cmp ebx, 480
+    jbe .blocked
+    dec ebx
+    mov [cursor_offset], ebx
+    shl ebx, 1
+    add ebx, 0xB8000
+    mov byte [ebx], ' '
+    mov byte [ebx+1], 0x0A
+.blocked:
+    pop ebx
+    ret
+
+align 16
+
+; =============================================================================
+; [ MODO LARGO - 64 BITS ] -> COMPATIBILIDAD MODERNA (AMD64 / x86_64)
+; =============================================================================
+[BITS 64]
+
+_shell_64:
+    mov word [cursor_offset], 480
+    lea rsi, [prompt_64]
+    call print_string_64
+
+shell_loop_64:
+    in al, 0x64
+    test al, 1
+    jz shell_loop_64
+    in al, 0x60
+    test al, 0x80
+    jnz shell_loop_64
+
+    cmp al, 0x1C
+    je handle_enter_64
+    cmp al, 0x0E
+    je handle_backspace_64
+    cmp al, 0x39
+    je handle_space_64
+    cmp al, 0x3A
+    ja shell_loop_64
+
+    movzx rbx, al
+    lea rdi, [scan_to_ascii]
+    mov al, [rdi + rbx]
+    cmp al, 0
+    je shell_loop_64
+    call print_char_64
+    jmp shell_loop_64
+
+handle_enter_64:
+    call next_line_64
+    lea rsi, [prompt_64]
+    call print_string_64
+    jmp shell_loop_64
+
+handle_backspace_64:
+    call do_backspace_64
+    jmp shell_loop_64
+
+handle_space_64:
+    mov al, ' '
+    call print_char_64
+    jmp shell_loop_64
+
+print_string_64:
+.loop:
+    lodsb
+    cmp al, 0
+    je .done
+    call print_char_64
+    jmp .loop
+.done:
+    ret
+
+print_char_64:
     push rbx
     movzx rbx, word [cursor_offset]
-    shl rbx, 1                  ; Multiplicar por 2 (Cada celda VGA ocupa 2 bytes)
-    add rbx, 0xB8000            ; Base de la memoria de video de texto
-
-    mov [rbx], al               ; Escribir el carácter ASCII
-    mov byte [rbx+1], 0x0E      ; Atributo de color: Texto Amarillo, Fondo Negro
-
-    inc word [cursor_offset]    ; Avanzar la posición del cursor global
-    cmp word [cursor_offset], 2000 ; Evitar desbordar los límites de la pantalla (80x25)
+    shl rbx, 1
+    add rbx, 0xB8000
+    mov [rbx], al
+    mov byte [rbx+1], 0x0B      ; Cyan brillante para diferenciar 64-bits
+    inc word [cursor_offset]
+    cmp word [cursor_offset], 2000
     jb .end
-    mov word [cursor_offset], 0 ; Reiniciar arriba si la pantalla se llena
+    mov word [cursor_offset], 0
 .end:
     pop rbx
     ret
 
-next_line:
-    ; Calcula de forma matemática el inicio de la siguiente fila (múltiplos de 80)
+next_line_64:
     push rax
     push rbx
     push rdx
-
     movzx rax, word [cursor_offset]
     mov rbx, 80
     xor rdx, rdx
-    div rbx                     ; RAX = Fila actual, RDX = Columna actual
-    
-    inc rax                     ; Avanzar a la siguiente fila entera
-    cmp rax, 25                 ; Si excede las 25 líneas, resetear a la parte superior
+    div rbx
+    inc rax
+    cmp rax, 25
     jb .matrix_ok
     xor rax, rax
 .matrix_ok:
-    mul rbx                     ; RAX = Siguiente Fila * 80 columnas
-    mov [cursor_offset], ax     ; Guardar nueva posición base
-
+    mul rbx
+    mov [cursor_offset], ax
     pop rdx
     pop rbx
     pop rax
     ret
 
-do_backspace:
-    ; Lógica segura de borrado físico en pantalla
+do_backspace_64:
     push rbx
     movzx rbx, word [cursor_offset]
-    cmp rbx, 480                ; Restricción: No permitas borrar el texto del prompt original
+    cmp rbx, 480
     jbe .blocked
-    
-    dec rbx                     ; Retroceder una celda interna
+    dec rbx
     mov [cursor_offset], bx
-    
     shl rbx, 1
     add rbx, 0xB8000
-    mov byte [rbx], ' '         ; Sustituir el carácter viejo por un espacio vacío
-    mov byte [rbx+1], 0x0E      ; Mantener el atributo visual estable
+    mov byte [rbx], ' '
+    mov byte [rbx+1], 0x0B
 .blocked:
     pop rbx
     ret
 
+align 16
+
 ; =============================================================================
-; SECCIÓN DE DATOS Y MAPEO DE HARDWARE (SET 1 SCAN CODES)
+; ZONA DE DATOS COMPARTIDA (SHARED MEMORY POOL)
 ; =============================================================================
+cursor_offset dd 0
 
-section .data
+; Diferentes prompts para que sepas en qué arquitectura aterrizó el Kernel
+prompt_16     db "XOS_16bit:/$ ", 0
+prompt_32     db "XOS_32bit:/$ ", 0
+prompt_64     db "Autruxalos@XOS_64bit:/$ ", 0
 
-cursor_offset dw 0              ; Variable para rastrear la celda VGA activa
-prompt_msg    db "Autruxalos@XOS_64bit:/$ ", 0
-
-; Tabla de traducción directa: Índice = Scan Code de Hardware -> Valor = ASCII
 scan_to_ascii:
     db 0,  0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0,  0
     db 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 0,  0, 'a', 's'
