@@ -1,6 +1,7 @@
 ; =============================================================================
 ; EXFS - UNIVERSAL STRUCTURE SPECIFICATION (16 / 32 / 64-BIT COMPATIBLE)
 ; Syntax: NASM
+; Base Mapped Position: Sector 2 of XKERNEL block (Aligned to 512 bytes)
 ; =============================================================================
 
 ; Estructura del SuperBlock (Fijo: 512 bytes)
@@ -70,3 +71,11 @@ exfs_validate_64:
 .valid:
     mov rax, 1
     ret
+
+; =============================================================================
+; ALINEACIÓN GEOMÉTRICA CRÍTICA
+; =============================================================================
+; Forzamos a que el driver ocupe exactamente 1 sector de disco (512 bytes).
+; Esto evita que los archivos posteriores (exit.bin y xsh.bin) colisionen
+; con los offsets en la memoria RAM del Exokernel.
+times 512 - ($ - $$) db 0
