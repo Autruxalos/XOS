@@ -1,5 +1,5 @@
 # =============================================================================
-# MAKEFILE MAESTRO DE XOS - CORREGIDO (ORDEN CRÍTICO DE SECTORES)
+# MAKEFILE MAESTRO DE XOS - MONORREPOSITORIO TOTALMENTE SINCRONIZADO
 # =============================================================================
 
 SRC_DIR   = src
@@ -8,38 +8,45 @@ IMAGE_OUT = $(BUILD_DIR)/xos_bios.img
 
 .PHONY: all image run clean
 
+# Acción por defecto
 all: image
 
 image:
 	@mkdir -p $(BUILD_DIR)
-	@echo "--- ENSAMBLANDO DEPENDENCIAS NATIVAS LOCALES ---"
+	@echo "--- COMPILANDO COMPONENTES DEL MONORREPOSITORIO ---"
 
-	# 1. Compilar XBOOT (Sector 0 - MBR)
+	# 1. Compilar Cargador de Arranque MBR (Sector 0)
 	nasm -f bin $(SRC_DIR)/boot/xboot.asm -o $(BUILD_DIR)/xboot.bin
 
-	# 2. Compilar XKERNEL (El Exokernel base - Debe ir primero en ejecución)
+	# 2. Compilar Exokernel Base Polimórfico
 	nasm -f bin $(SRC_DIR)/kernel/xkernel.asm -o $(BUILD_DIR)/xkernel.bin
 
-	# 3. Compilar EXFS Driver (Módulo de almacenamiento)
+	# 3. Compilar Dependencia: Driver del Sistema de Archivos EXFS
 	nasm -f bin $(SRC_DIR)/kernel/drivers/exfs.asm -o $(BUILD_DIR)/exfs.bin
 
-	# 4. Compilar EXIT (Subsistema Init)
+	# 4. Compilar Dependencia: Subsistema Init (EXIT)
 	nasm -f bin $(SRC_DIR)/init/exit.asm -o $(BUILD_DIR)/exit.bin
 
-	# 5. Compilar XSH (La Shell interactiva polimórfica)
+	# 5. Compilar Dependencia: Shell Interactiva Multi-Arquitectura (XSH)
 	nasm -f bin $(SRC_DIR)/apps/xsh.asm -o $(BUILD_DIR)/xsh.bin
 
-	@echo "--- CONCATENANDO SECTORES EN ORDEN OPERATIVO ---"
-	# CORRECCIÓN: xboot va al sector 0, xkernel va directo al sector 1 (0x10000 de RAM)
+	@echo "--- CONCATENANDO Y RELLENANDO IMAGEN FÍSICA DE DISCO ---"
+	# Fusionamos los componentes binarios en el orden en que se mapean en la RAM
 	cat $(BUILD_DIR)/xboot.bin \
 	    $(BUILD_DIR)/xkernel.bin \
 	    $(BUILD_DIR)/exfs.bin \
 	    $(BUILD_DIR)/exit.bin \
 	    $(BUILD_DIR)/xsh.bin > $(IMAGE_OUT)
-	@echo "¡Éxito! Imagen balanceada creada en: $(IMAGE_OUT)"
+
+	# CALIBRACIÓN TÉCNICA: Rellenamos con ceros usando dd para coincidir exactamente
+	# con los 64 sectores que xboot.asm le exige a la BIOS (65 sectores en total = 33,280 bytes)
+	dd if=/dev/zero bs=512 count=65 >> $(IMAGE_OUT) 2>/dev/null
+	@echo "¡Éxito! Archivo unificado listo en: $(IMAGE_OUT)"
 
 run: image
+	@echo "--- LANZANDO CONFIGURACIÓN DE PRUEBA EN QEMU ---"
 	qemu-system-x86_64 -drive format=raw,file=$(IMAGE_OUT)
 
 clean:
+	@echo "--- LIMPIANDO ESTRUCTURAS TEMPORALES ---"
 	rm -rf $(BUILD_DIR)
