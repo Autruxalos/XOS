@@ -1,65 +1,122 @@
+
 # =============================================================================
-# MAKEFILE UNIFICADO - DISTRIBUCIÓN DE ALMACENAMIENTO DE XOS
+# MAKEFILE - XOS EXOKERNEL OPERATING SYSTEM
 # =============================================================================
-
-BOOT_ASM    = src/boot/xboot.asm
-KERNEL_ASM  = src/kernel/xkernel.asm
-XSH16_ASM   = src/apps/xsh16.asm
-XSH32_ASM   = src/apps/xsh32.asm
-XSH64_ASM   = src/apps/xsh64.asm
-
-BOOT_BIN    = xboot.bin
-KERNEL_BIN  = xkernel.bin
-XSH16_BIN   = xsh16.bin
-XSH32_BIN   = xsh32.bin
-XSH64_BIN   = xsh64.bin
-
-IMAGE_OUT   = xos.img
+# Mapa de sectores en disco (cada sector = 512 bytes):
+#
+#   Sector   0       → XBOOT   (MBR, 512 bytes exactos)
+#   Sectores 1-16   → XKERNEL (hasta 8 KB)
+#   Sectores 50-53  → EXIT    (hasta 2 KB)
+#   Sectores 100-103→ XSH     (hasta 2 KB)
+#
+# Tamaño total de la imagen: 2 MB (4096 sectores)
+# =============================================================================
+ 
 ASM         = nasm
-FLAGS       = -f bin
-
-.PHONY: all clean run
-
-all: $(IMAGE_OUT)
-
-$(IMAGE_OUT): $(BOOT_BIN) $(KERNEL_BIN) $(XSH16_BIN) $(XSH32_BIN) $(XSH64_BIN)
-	@echo "--- Creando topología física del disco libre de colisiones ---"
-	# Sector 0: Gestor de arranque (512 bytes fijos)
-	dd if=$(BOOT_BIN) of=$(IMAGE_OUT) bs=512 count=1 conv=notrunc
-	
-	# Sector 1: Kernel base multi-modo (Margen de 99 sectores libres)
-	dd if=$(KERNEL_BIN) of=$(IMAGE_OUT) bs=512 seek=1 conv=notrunc
-	
-	# Sector 100: Código de aplicación interactiva para 16-bits
-	dd if=$(XSH16_BIN) of=$(IMAGE_OUT) bs=512 seek=100 conv=notrunc
-	
-	# Sector 120: Código de aplicación interactiva para 32-bits
-	dd if=$(XSH32_BIN) of=$(IMAGE_OUT) bs=512 seek=120 conv=notrunc
-	
-	# Sector 140: Código de aplicación interactiva para 64-bits
-	dd if=$(XSH64_BIN) of=$(IMAGE_OUT) bs=512 seek=140 conv=notrunc
-	@echo "--- Finalizado: Imagen $(IMAGE_OUT) lista para pruebas ---"
-
-%.bin: src/boot/%.asm
-	$(ASM) $(FLAGS) $< -o $@
-
-$(BOOT_BIN): $(BOOT_ASM)
-	$(ASM) $(FLAGS) $(BOOT_ASM) -o $(BOOT_BIN)
-
-$(KERNEL_BIN): $(KERNEL_ASM)
-	$(ASM) $(FLAGS) $(KERNEL_ASM) -o $(KERNEL_BIN)
-
-$(XSH16_BIN): $(XSH16_ASM)
-	$(ASM) $(FLAGS) $(XSH16_ASM) -o $(XSH16_BIN)
-
-$(XSH32_BIN): $(XSH32_ASM)
-	$(ASM) $(FLAGS) $(XSH32_ASM) -o $(XSH32_BIN)
-
-$(XSH64_BIN): $(XSH64_ASM)
-	$(ASM) $(FLAGS) $(XSH64_ASM) -o $(XSH64_BIN)
-
+ASMFLAGS    = -f bin -w+all
+ 
+BOOT_SRC    = src/boot/xboot.asm
+KERNEL_SRC  = src/kernel/xkernel.asm
+EXIT_SRC    = src/init/exit.asm
+XSH_SRC     = src/apps/xsh.asm
+ 
+BOOT_BIN    = build/xboot.bin
+KERNEL_BIN  = build/xkernel.bin
+EXIT_BIN    = build/exit.bin
+XSH_BIN     = build/xsh.bin
+ 
+IMAGE       = xos.img
+IMAGE_SIZE  = 4096      # sectores × 512 bytes = 2 MB
+ 
+.PHONY: all clean run debug
+ 
+all: $(IMAGE)
+ 
+# Crear directorio de build
+build:
+	@mkdir -p build
+ 
+# Compilar XBOOT
+$(BOOT_BIN): $(BOOT_SRC) | build
+	@echo "[NASM] Compilando XBOOT..."
+	$(ASM) $(ASMFLAGS) $< -o $@
+	@size=$$(wc -c < $@); \
+	if [ $$size -ne 512 ]; then \
+		echo "ERROR: XBOOT tiene $$size bytes (debe ser exactamente 512)"; \
+		exit 1; \
+	fi
+	@echo "      XBOOT OK (512 bytes, firma 0xAA55)"
+ 
+# Compilar XKERNEL
+$(KERNEL_BIN): $(KERNEL_SRC) | build
+	@echo "[NASM] Compilando XKERNEL..."
+	$(ASM) $(ASMFLAGS) $< -o $@
+	@echo "      XKERNEL OK ($$(wc -c < $@) bytes)"
+ 
+# Compilar EXIT
+$(EXIT_BIN): $(EXIT_SRC) | build
+	@echo "[NASM] Compilando EXIT..."
+	$(ASM) $(ASMFLAGS) $< -o $@
+	@echo "      EXIT OK ($$(wc -c < $@) bytes)"
+ 
+# Compilar XSH
+$(XSH_BIN): $(XSH_SRC) | build
+	@echo "[NASM] Compilando XSH..."
+	$(ASM) $(ASMFLAGS) $< -o $@
+	@echo "      XSH OK ($$(wc -c < $@) bytes)"
+ 
+# Ensamblar imagen de disco
+$(IMAGE): $(BOOT_BIN) $(KERNEL_BIN) $(EXIT_BIN) $(XSH_BIN)
+	@echo ""
+	@echo "[IMG] Creando imagen de disco $(IMAGE) ($(IMAGE_SIZE) sectores)..."
+ 
+	# 1. Inicializar imagen completa con ceros (CRÍTICO: evita basura entre sectores)
+	dd if=/dev/zero of=$(IMAGE) bs=512 count=$(IMAGE_SIZE) status=none
+ 
+	# 2. Sector 0: XBOOT (MBR)
+	dd if=$(BOOT_BIN) of=$(IMAGE) bs=512 seek=0 count=1 conv=notrunc status=none
+	@echo "      [sector   0] XBOOT"
+ 
+	# 3. Sectores 1-16: XKERNEL
+	dd if=$(KERNEL_BIN) of=$(IMAGE) bs=512 seek=1 conv=notrunc status=none
+	@echo "      [sector   1] XKERNEL"
+ 
+	# 4. Sectores 50-53: EXIT
+	dd if=$(EXIT_BIN) of=$(IMAGE) bs=512 seek=50 conv=notrunc status=none
+	@echo "      [sector  50] EXIT"
+ 
+	# 5. Sectores 100-103: XSH
+	dd if=$(XSH_BIN) of=$(IMAGE) bs=512 seek=100 conv=notrunc status=none
+	@echo "      [sector 100] XSH"
+ 
+	@echo ""
+	@echo "[OK] Imagen lista: $(IMAGE)"
+	@echo "     Usa 'make run' para ejecutar en QEMU."
+ 
+# Ejecutar en QEMU (x86_64)
+run: $(IMAGE)
+	@echo "[QEMU] Iniciando XOS..."
+	qemu-system-x86_64 \
+		-drive format=raw,file=$(IMAGE),if=ide,media=disk \
+		-m 32M \
+		-no-reboot \
+		-no-shutdown \
+		-display sdl
+ 
+# Ejecutar con monitor de QEMU y serial para debugging
+debug: $(IMAGE)
+	@echo "[QEMU] Modo debug - usa Ctrl+Alt+2 para el monitor de QEMU"
+	qemu-system-x86_64 \
+		-drive format=raw,file=$(IMAGE),if=ide,media=disk \
+		-m 32M \
+		-no-reboot \
+		-no-shutdown \
+		-monitor stdio \
+		-d int,cpu_reset \
+		-D qemu_debug.log
+ 
 clean:
-	rm -f *.bin *.img
-
-run: $(IMAGE_OUT)
-	qemu-system-x86_64 -drive format=raw,file=$(IMAGE_OUT)
+	@echo "[CLEAN] Limpiando binarios e imagen..."
+	rm -rf build/
+	rm -f $(IMAGE) qemu_debug.log
+	@echo "      Listo."
