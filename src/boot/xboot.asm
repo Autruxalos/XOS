@@ -1,27 +1,37 @@
 ; =============================================================================
-; XBOOT - THE ADAPTIVE MULTI-ARCH BOOTLOADER (16/32/64-BIT SELECTOR)
-; Syntax: NASM (Starts in 16-bit Real Mode)
+; XBOOT - CARGADOR SELECTOR Y CONFIGURADOR DE HARDWARE MULTI-ARQUITECTURA
 ; =============================================================================
 
-bits 16
-org 0x7C00
+org 0x7C00                      ; Dirección estándar de carga del MBR por la BIOS
+bits 16                         ; Iniciamos en Modo Real de 16 bits
 
-xboot_init:
-    cli
-    xor ax, ax
+_start:
+    xor ax, ax                  ; Limpiar registros de segmento
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00
-    sti
+    mov sp, 0x7C00              ; Configurar la pila de forma segura por debajo de la BIOS
+    mov [boot_drive], dl        ; Guardar el identificador del disco de arranque dado por la BIOS
 
-    mov [boot_drive], dl        ; Guardar unidad de disco dada por BIOS
+    ; --- CONTROLADOR DE DISCO: CARGAR EL MONORREPOSITORIO EN RAM ---
+    mov ax, 0x1000              ; Dirección Segmento de destino (0x1000:0x0000 -> 0x10000 física)
+    mov es, ax
+    xor bx, bx                  ; Offset de destino = 0
 
-    ; 1. DETECTAR CAPACIDADES DE LA CPU (Instrucción CPUID)
-    pushfd
+    mov ah, 0x02                ; Función BIOS: Leer sectores desde el disco
+    mov al, 64                  ; INTERRUPCIÓN FORZADA: Leer 64 sectores (32 KB del sistema operativo)
+    mov ch, 0                   ; Cilindro 0
+    mov dh, 0                   ; Cabeza 0
+    mov cl, 2                   ; Empezar en el Sector 2 (Sector 1 es el MBR)
+    mov dl, [boot_drive]        ; Recuperar el disco de arranque original
+    int 0x13                    ; Llamada de interrupción de bajo nivel a la BIOS
+    jc disk_error               ; Si el flag de acarreo se activa, falló el hardware
+
+    ; --- INTERROGAR CPU (CPUID) PARA DETECTAR 64-BITS ---
+    pushfd                      ; Verificar si la CPU soporta la instrucción CPUID
     pop eax
     mov ecx, eax
-    xor eax, 1 << 21            ; Invertir el bit ID de la bandera
+    xor eax, 1 << 21
     push eax
     popfd
     pushfd
@@ -29,87 +39,68 @@ xboot_init:
     push ecx
     popfd
     xor eax, ecx
-    jz .cpu_is_16bit            ; Si el bit no cambió, la CPU es de 16 bits pura
+    jz no_cpuid                 ; Si no cambia el bit 21, no hay CPUID (Procesador antiguo de 32 bits)
 
-    ; Verificar si soporta Modo Largo de 64 bits
     mov eax, 0x80000000
     cpuid
     cmp eax, 0x80000001
-    jb .cpu_is_32bit            ; Si no soporta funciones extendidas, máximo es 32 bits
+    jb switch_to_32bit          ; No soporta funciones extendidas, ir a 32 bits
 
     mov eax, 0x80000001
     cpuid
-    test edx, 1 << 29           ; Verificar bit 29 (Long Mode)
-    jz .cpu_is_32bit            ; Si el bit es 0, la CPU es de 32 bits
+    test edx, 1 << 29           ; Verificar el bit de Modo Largo (Long Mode)
+    jz switch_to_32bit          ; Si el bit es 0, no soporta 64 bits de forma nativa
 
-; =============================================================================
-; CAMINO A: LA CPU SOPORTA 64 BITS NATIVOS
-; =============================================================================
-.cpu_is_64bit:
-    ; Configurar paginación de 4 niveles básica para Modo Largo
-    mov edi, 0x1000             ; Dirección de la PML4
-    mov cr3, edi
-    xor eax, eax
-    mov ecx, 4096
-    rep stosd                   ; Limpiar tablas
-
-    mov dword [0x1000], 0x2003  ; PML4[0] -> PDPT
-    mov dword [0x2000], 0x3003  ; PDPT[0] -> PD
-    mov dword [0x3000], 0x0083  ; PD[0] -> Mapeo directo 2MB (Huge Page)
-
+    ; --- ENRUTAMIENTO HACIA MODO LARGO (64-BITS) ---
+    ; Habilitar PAE (Physical Address Extension) obligatorio para 64 bits
     mov eax, cr4
-    or eax, 1 << 5              ; Activar PAE
+    or eax, 1 << 5
     mov cr4, eax
 
-    mov ecx, 0x0C000080         ; EFER MSR
+    ; Cargar las tablas de paginación virtuales base (Mapeo de Identidad Simulado)
+    ; Nota: En producción, aquí se inyecta el puntero CR3 de tu paginación
+    
+    ; Activar el bit de Modo Largo en el registro EFER MSR
+    mov ecx, 0xC0000080
     rdmsr
-    or eax, 1 << 8              ; LME = 1 (Long Mode Enable)
+    or eax, 1 << 8
     wrmsr
 
+    ; Activar Paginación y Modo Protegido simultáneamente
     mov eax, cr0
-    or eax, 0x80000001          ; PG = 1, PE = 1
+    or eax, 1 << 31 | 1 << 0
     mov cr0, eax
 
-    lgdt [gdt64_descriptor]
-    jmp 0x08:0x10040            ; Salto al Entry Point de 64 bits del Kernel
+    lgdt [gdt64_descriptor]     ; Cargar la estructura de la GDT de 64 bits
+    jmp 0x08:0x10080            ; SALTO LEJANO CRÍTICO: Kernel, Entry Point de 64 bits
 
-; =============================================================================
-; CAMINO B: LA CPU ES MÁXIMO DE 32 BITS
-; =============================================================================
-.cpu_is_32bit:
-    lgdt [gdt32_descriptor]
+switch_to_32bit:
+    ; --- ENRUTAMIENTO HACIA MODO PROTEGIDO (32-BITS) ---
+    cli                         ; Deshabilitar interrupciones
     mov eax, cr0
-    or eax, 1                   ; Activar Modo Protegido (PE)
+    or eax, 1                   ; Activar el bit de Modo Protegido (PE)
     mov cr0, eax
-    jmp 0x08:0x10020            ; Salto al Entry Point de 32 bits del Kernel
+
+    lgdt [gdt32_descriptor]     ; Cargar la GDT tradicional de 32-bits
+    jmp 0x08:0x10040            ; SALTO LEJANO CRÍTICO: Kernel, Entry Point de 32 bits
+
+disk_error:
+no_cpuid:
+    hlt                         ; Detener la CPU ante fallos fatales de hardware
+    jmp $
 
 ; =============================================================================
-; CAMINO C: LA CPU ES ANTIGUA (16 BITS PUROS)
-; =============================================================================
-.cpu_is_16bit:
-    mov dl, [boot_drive]
-    jmp 0x1000:0x0000           ; Salto al Entry Point de 16 bits del Kernel (Inicio de RAM)
-
-; =============================================================================
-; ESTRUCTURAS DE HARDWARE (GDTs) Y VARIABLES - CORREGIDO TOTALMENTE
+; ESTRUCTURAS DE HARDWARE (GDTs)
 ; =============================================================================
 align 8
 gdt32_start:
-    dq 0x0000000000000000       ; Descriptor Nulo obligatorio
+    dq 0x0000000000000000       ; Descriptor nulo obligatorio
 gdt32_code:
-    dw 0xFFFF                   ; Límite (0-15)
-    dw 0x0000                   ; Base (0-15)
-    db 0x00                     ; Base (16-23)
-    db 10011010b                ; Acceso (Código Ejecutable/Lectura)
-    db 11001111b                ; Granularidad
-    db 0x00                     ; Base (24-31)
+    dw 0xFFFF, 0x0000
+    db 0x00, 10011010b, 11001111b, 0x00
 gdt32_data:
-    dw 0xFFFF                   ; Límite (0-15)
-    dw 0x0000                   ; Base (0-15)
-    db 0x00                     ; Base (16-23)
-    db 10010010b                ; Acceso (Datos Lectura/Escritura)
-    db 11001111b                ; Granularidad
-    db 0x00                     ; Base (24-31)
+    dw 0xFFFF, 0x0000
+    db 0x00, 10010010b, 11001111b, 0x00
 gdt32_end:
 
 gdt32_descriptor:
@@ -117,20 +108,20 @@ gdt32_descriptor:
     dd gdt32_start
 
 gdt64_start:
-    dq 0x0000000000000000       ; Descriptor Nulo obligatorio
+    dq 0x0000000000000000       ; Descriptor nulo obligatorio
 gdt64_code:
-    dq 0x00209A0000000000       ; Descriptor de Código de 64 bits plano
+    dq 0x00209A0000000000       ; Segmento plano de código ejecutable de 64 bits
 gdt64_data:
-    dq 0x0000920000000000       ; Descriptor de Datos de 64 bits plano
+    dq 0x0000920000000000       ; Segmento plano de datos de 64 bits
 gdt64_end:
 
 gdt64_descriptor:
     dw gdt64_end - gdt64_start - 1
     dd gdt64_start
 
-; --- VARIABLES DE ALMACENAMIENTO ---
-boot_drive db 0x80              ; <--- Aquí definimos la variable que faltaba
+; --- VARIABLES DE ENTORNO ---
+boot_drive db 0x00
 
-; --- FIRMA DE ARRANQUE OBLIGATORIA DEL MBR ---
-times 510 - ($ - $$) db 0       ; Rellena con ceros hasta el byte 510
-dw 0xAA55                       ; Firma mágica de arranque de la BIOS
+; --- FIRMA MÁGICA DEL MBR ---
+times 510 - ($ - $$) db 0       ; Relleno de seguridad matemático estricto
+dw 0xAA55                       ; Firma de disco arrancable exigida por BIOS
