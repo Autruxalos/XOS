@@ -165,19 +165,12 @@ exfs_create_directory_slot:
 ; --- SECCIÓN DE DATOS DE HARDWARE ---
 SECTION .data
 align 4096
-page_table_p4: resb 4096
-page_table_p3: resb 4096
-page_table_p2: resb 4096
-
-align 8
-gdt64_start:
-    dq 0x0000000000000000       ; Descriptor nulo
-    dq 0x00209A0000000000       ; Selector de código de 64 bits (0x08)
-    dq 0x0000920000000000       ; Selector de datos de 64 bits (0x10)
-gdt64_end:
-gdt64_desc:
-    dw gdt64_end - gdt64_start - 1
-    dq gdt64_start
+page_table_p4: 
+    times 4096 db 0
+page_table_p3: 
+    times 4096 db 0
+page_table_p2: 
+    times 4096 db 0
 
 ; --- VARIABLES GLOBALES DEL NÚCLEO EXOKERNEL ---
 SECTION .bss
