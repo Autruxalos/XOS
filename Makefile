@@ -1,5 +1,5 @@
 # =============================================================================
-# MAKEFILE MAESTRO DE XOS - MONORREPOSITORIO TOTALMENTE SINCRONIZADO
+# MAKEFILE MAESTRO DE XOS - MONORREPOSITORIO CORREGIDO (TAMAÑO FIJO)
 # =============================================================================
 
 SRC_DIR   = src
@@ -8,7 +8,6 @@ IMAGE_OUT = $(BUILD_DIR)/xos_bios.img
 
 .PHONY: all image run clean
 
-# Acción por defecto
 all: image
 
 image:
@@ -30,18 +29,18 @@ image:
 	# 5. Compilar Dependencia: Shell Interactiva Multi-Arquitectura (XSH)
 	nasm -f bin $(SRC_DIR)/apps/xsh.asm -o $(BUILD_DIR)/xsh.bin
 
-	@echo "--- CONCATENANDO Y RELLENANDO IMAGEN FÍSICA DE DISCO ---"
-	# Fusionamos los componentes binarios en el orden en que se mapean en la RAM
+	@echo "--- CONCATENANDO Y AJUSTANDO IMAGEN FÍSICA DE DISCO ---"
+	# Fusionamos los componentes binarios en orden directo
 	cat $(BUILD_DIR)/xboot.bin \
 	    $(BUILD_DIR)/xkernel.bin \
 	    $(BUILD_DIR)/exfs.bin \
 	    $(BUILD_DIR)/exit.bin \
 	    $(BUILD_DIR)/xsh.bin > $(IMAGE_OUT)
 
-	# CALIBRACIÓN TÉCNICA: Rellenamos con ceros usando dd para coincidir exactamente
-	# con los 64 sectores que xboot.asm le exige a la BIOS (65 sectores en total = 33,280 bytes)
-	dd if=/dev/zero bs=512 count=65 >> $(IMAGE_OUT) 2>/dev/null
-	@echo "¡Éxito! Archivo unificado listo en: $(IMAGE_OUT)"
+	# CALIBRACIÓN REAL: Forzamos el archivo final a medir exactamente 8704 bytes
+	# (1 sector del MBR + 16 sectores leídos por la BIOS = 17 sectores de 512 bytes)
+	truncate -s 8704 $(IMAGE_OUT)
+	@echo "¡Éxito! Archivo unificado de tamaño fijo listo en: $(IMAGE_OUT)"
 
 run: image
 	@echo "--- LANZANDO CONFIGURACIÓN DE PRUEBA EN QEMU ---"
