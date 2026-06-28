@@ -2,6 +2,19 @@
 ; XSH - ENTORNO INTERACTIVO MONOLÍTICO MULTI-ARQUITECTURA (XOS)
 ; =============================================================================
 
+; Al principio de src/apps/xsh.asm, justo debajo de las directivas de warnings:
+
+[BITS 16]
+xsh_header_vectors:
+    dw _xsh_entry_16             ; Offset de 16 bits (2 bytes)
+    dd _xsh_entry_32             ; Dirección completa de 32 bits (4 bytes)
+    dq _xsh_entry_64             ; Dirección completa de 64 bits (8 bytes)
+
+; A partir de aquí sigue tu código normal de XSH...
+_xsh_entry_16:
+    mov ax, cs
+    ...
+
 ; Silenciar advertencias de relocalización absoluta cruzada de NASM
 [warning -reloc-abs-word]
 [warning -reloc-abs-dword]
