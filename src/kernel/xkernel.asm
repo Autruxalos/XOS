@@ -161,7 +161,7 @@ exfs_create_directory_slot:
 .msg_ok: db "EXFS: Directorio asignado en Sector de Datos.", 0
 
 ; =============================================================================
-# INYECCIÓN DINÁMICA DE MÓDULOS EN ESPACIO DE CÓDIGO (.text)
+; INYECCIÓN DINÁMICA DE MÓDULOS EN ESPACIO DE CÓDIGO (.text)
 ; =============================================================================
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
