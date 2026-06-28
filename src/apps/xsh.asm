@@ -1,17 +1,27 @@
 ; =============================================================================
-; XSH - SHELL INTERACTIVA FAT BINARY (16-BIT / 32-BIT / 64-BIT)
+; XSH - SHELL INTERACTIVA FAT BINARY EVOLUCIONADA (MULTI-ARQUITECTURA SEGURO)
 ; =============================================================================
-; Este archivo contiene el código máquina nativo para las 3 arquitecturas.
-; Comparten las mismas funciones lógicas, pero usan los registros y el 
-; direccionamiento de memoria correctos para cada era de procesadores.
+
+; =============================================================================
+; CABECERA DE ENRUTAMIENTO (DISPATCHER)
+; =============================================================================
+; Nota: Forzamos la entrada asumiendo el peor de los escenarios (64-bits). 
+; Si la CPU entra aquí en Long Mode, saltará limpiamente al final del archivo.
+[BITS 64]
+_entry_point:
+    jmp _shell_64              ; Salto largo hacia la sección nativa de 64-bits
+    
+    ; Dejamos espacio de alineación física exacta para que los otros modos 
+    ; puedan poseer puntos de entrada predecibles si los necesitas invocar manualmente.
+    nop
+    nop
+    nop
 
 ; =============================================================================
 ; [ MODO REAL - 16 BITS ] -> COMPATIBILIDAD 8086
 ; =============================================================================
 [BITS 16]
-
 _shell_16:
-    ; Configurar segmentos para Modo Real
     mov ax, cs
     mov ds, ax
     mov es, ax
@@ -74,7 +84,7 @@ print_string_16:
 print_char_16:
     push bx
     push es
-    mov bx, 0xB800              ; En 16-bits usamos segmentos para llegar a VGA
+    mov bx, 0xB800              
     mov es, bx
     mov bx, [cursor_offset]
     shl bx, 1
@@ -133,7 +143,6 @@ align 16
 ; [ MODO PROTEGIDO - 32 BITS ] -> COMPATIBILIDAD i386
 ; =============================================================================
 [BITS 32]
-
 _shell_32:
     mov dword [cursor_offset], 480
     mov esi, prompt_32
@@ -194,9 +203,9 @@ print_char_32:
     push ecx
     mov ecx, [cursor_offset]
     shl ecx, 1
-    add ecx, 0xB8000            ; En 32-bits usamos memoria plana
+    add ecx, 0xB8000            
     mov [ecx], al
-    mov byte [ecx+1], 0x0A      ; Verde brillante para diferenciar 32-bits
+    mov byte [ecx+1], 0x0A      
     inc dword [cursor_offset]
     cmp dword [cursor_offset], 2000
     jb .end
@@ -244,12 +253,11 @@ do_backspace_32:
 align 16
 
 ; =============================================================================
-; [ MODO LARGO - 64 BITS ] -> COMPATIBILIDAD MODERNA (AMD64 / x86_64)
+; [ MODO LARGO - 64 BITS ] -> COMPATIBILIDAD AMD64
 ; =============================================================================
 [BITS 64]
-
 _shell_64:
-    mov word [cursor_offset], 480
+    mov dword [cursor_offset], 480
     lea rsi, [prompt_64]
     call print_string_64
 
@@ -309,7 +317,7 @@ print_char_64:
     shl rbx, 1
     add rbx, 0xB8000
     mov [rbx], al
-    mov byte [rbx+1], 0x0B      ; Cyan brillante para diferenciar 64-bits
+    mov byte [rbx+1], 0x0B      ; Cyan brillante
     inc word [cursor_offset]
     cmp word [cursor_offset], 2000
     jb .end
@@ -348,7 +356,7 @@ do_backspace_64:
     shl rbx, 1
     add rbx, 0xB8000
     mov byte [rbx], ' '
-    mov byte [rbx+1], 0x0B
+    mov byte [ebx+1], 0x0B      ; Corrección: Ajustado a ebx para compatibilidad de registro indexado base plano
 .blocked:
     pop rbx
     ret
@@ -360,7 +368,6 @@ align 16
 ; =============================================================================
 cursor_offset dd 0
 
-; Diferentes prompts para que sepas en qué arquitectura aterrizó el Kernel
 prompt_16     db "XOS_16bit:/$ ", 0
 prompt_32     db "XOS_32bit:/$ ", 0
 prompt_64     db "Autruxalos@XOS_64bit:/$ ", 0
