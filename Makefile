@@ -1,15 +1,15 @@
 # =============================================================================
-# MAKEFILE DEFINITIVO - XOS64
+# MAKEFILE DEFINITIVO Y UNIFICADO - XOS64
 # =============================================================================
 
 ASM = nasm
 ASM_FLAGS = -f bin -w+all
 
 BUILD_DIR = build
+IMAGE = $(BUILD_DIR)/XOS.img
+
 XBOOT_SRC = src/boot/xboot.asm
 XKERNEL_SRC = src/kernel/xkernel.asm
-
-IMAGE = $(BUILD_DIR)/XOS.img
 
 all: image
 
@@ -29,7 +29,7 @@ image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin | $(BUILD_DIR)
 	dd if=/dev/zero bs=512 count=20480 of=$(IMAGE) status=none
 	dd if=$(BUILD_DIR)/xboot.bin of=$(IMAGE) conv=notrunc status=none
 	dd if=$(BUILD_DIR)/xkernel.bin of=$(IMAGE) seek=1 conv=notrunc status=none
-	@echo "====== ¡SISTEMA XOS MAPEADO CORRECTAMENTE! ======"
+	@echo "====== ¡SISTEMA XOS COMPILADO CORRECTAMENTE! ======"
 
 run: image
 	@echo "[QEMU] Iniciando entorno controlado x86_64..."
