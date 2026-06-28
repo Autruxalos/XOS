@@ -1,10 +1,8 @@
 ; =============================================================================
-; EXIT - THE UNIFIED MULTI-ARCH INITIALIZATION SUBSYSTEM (16 / 32 / 64-BIT INIT)
+; EXIT - THE UNIFIED MULTI-ARCH INITIALIZATION SUBSYSTEM (ORDEN SEGMENTADO)
 ; Syntax: NASM
-; Base Mapped Address: 0x30000 (Physical RAM)
+; Mapped Base Address: 0x10200 (Sector 2 en RAM)
 ; =============================================================================
-
-org 0x30000
 
 ; =============================================================================
 ; OFFSET 0x00: 16-BIT REAL MODE INITIALIZATION
@@ -17,7 +15,7 @@ _exit_entry_16:
     mov si, msg_exit_16
     call print_string_16
 
-    jmp 0x20000                 ; Saltar a la Shell de 16-bits (Offset 0x00)
+    jmp 0x10400                 ; SALTO CONFIGURADO: Ir a la Shell de 16-bits (Sector 3)
 
 print_string_16:
     mov ah, 0x0E
@@ -36,13 +34,13 @@ msg_exit_16 db '-> EXIT: 16-bit synch.', 13, 10, 0
 ; =============================================================================
 ; OFFSET 0x40 (64 bytes): 32-BIT PROTECTED MODE INITIALIZATION
 ; =============================================================================
-times 64 - ($ - $$) db 0        ; Alineación segura a 64 bytes
+times 64 - ($ - $$) db 0        ; Alineación estricta al offset 0x40 del Sector 2
 bits 32
 _exit_entry_32:
     mov dword [init_status], 32
 
     mov esi, msg_exit_32
-    mov edi, 0xB8000 + 480      ; Línea 4 de la memoria de video VGA
+    mov edi, 0xB8000 + 480      ; Línea 4 de la pantalla VGA
     mov ah, 0x07
 .loop:
     lodsb
@@ -52,7 +50,7 @@ _exit_entry_32:
     add edi, 2
     jmp .loop
 .done:
-    jmp 0x20040                 ; Saltar a la Shell de 32-bits (Offset 0x40)
+    jmp 0x10440                 ; SALTO CONFIGURADO: Ir a la Shell de 32-bits (Offset 0x40 del Sector 3)
 
 msg_exit_32 db '-> EXIT: 32-bit synch.', 0
 
@@ -60,14 +58,14 @@ msg_exit_32 db '-> EXIT: 32-bit synch.', 0
 ; =============================================================================
 ; OFFSET 0x80 (128 bytes): 64-BIT LONG MODE INITIALIZATION
 ; =============================================================================
-times 128 - ($ - $$) db 0       ; Alineación segura a 128 bytes
+times 128 - ($ - $$) db 0       ; Alineación estricta al offset 0x80 del Sector 2
 bits 64
 _exit_entry_64:
     mov rax, 64
     mov [init_status], rax
 
     mov rsi, msg_exit_64
-    mov rdi, 0xB8000 + 640      ; Línea 5 de la memoria de video VGA
+    mov rdi, 0xB8000 + 640      ; Línea 5 de la pantalla VGA
     mov ah, 0x0F
 .loop:
     lodsb
@@ -77,10 +75,13 @@ _exit_entry_64:
     add rdi, 2
     jmp .loop
 .done:
-    jmp 0x20080                 ; Saltar a la Shell de 64-bits (Offset 0x80)
+    jmp 0x10480                 ; SALTO CONFIGURADO: Ir a la Shell de 64-bits (Offset 0x80 del Sector 3)
 
 msg_exit_64 db '-> EXIT: 64-bit synch.', 0
 
-; --- VARIABLES ---
+; --- VARIABLES INTERNAS ---
 align 8
 init_status: dq 0
+
+; ALINEACIÓN GEOMÉTRICA MANDATORIA: Cierra el Sector 2 de forma limpia
+times 512 - ($ - $$) db 0
