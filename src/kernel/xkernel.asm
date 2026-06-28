@@ -78,8 +78,8 @@ xk_long_mode_entry:
     call exit_main_executor
 
 .infinite_halt:
-    cli                         ; Desactivar interrupciones de forma segura
-    hlt                         ; Detener procesador
+    cli
+    hlt
     jmp .infinite_halt
 
 ; --- INTERFAZ DE DRIVERS DE HARDWARE ---
@@ -95,7 +95,6 @@ xk_clear_screen:
 
 global xk_print
 xk_print:
-    ; Entrada: RSI = Puntero a cadena terminada en 0, BL = Atributo color
     movzx rdx, word [cursor_pos]
     shl rdx, 1
     add rdx, 0xB8000
@@ -127,7 +126,6 @@ xk_println:
 
 global xk_strcmp
 xk_strcmp:
-    ; Entrada: RSI y RDI apuntando a las cadenas a comparar
 .loop:
     mov al, [rsi]
     mov bl, [rdi]
@@ -142,18 +140,18 @@ xk_strcmp:
     mov rax, 1
     ret
 .equal:
-    xor rax, rax                ; Retorna 0 si son idénticas
+    xor rax, rax
     ret
 
 global xk_readline
 xk_readline:
     mov rsi, .mock_input
-    mov rcx, 16
-    rep movsb
+    mov rdi, readline_buf
+    mov rcx, 4
+    rep movsd
     ret
-.mock_input: db "pwd", 0
+.mock_input: db "pwd", 0, 0
 
-; --- INTERFAZ SIMULADA DE DISCO ATA PIO / EXFS ---
 global exfs_create_directory_slot
 exfs_create_directory_slot:
     mov rsi, .msg_ok
@@ -162,17 +160,34 @@ exfs_create_directory_slot:
     ret
 .msg_ok: db "EXFS: Directorio asignado en Sector de Datos.", 0
 
-; --- SECCIÓN DE DATOS DE HARDWARE ---
+; =============================================================================
+# INYECCIÓN DINÁMICA DE MÓDULOS EN ESPACIO DE CÓDIGO (.text)
+; =============================================================================
+%include "src/init/exit.asm"
+%include "src/apps/xsh.asm"
+
+
+; --- SECCIÓN DE DATOS DE HARDWARE INICIALIZADOS ---
 SECTION .data
 align 4096
-page_table_p4: 
-    times 4096 db 0
-page_table_p3: 
-    times 4096 db 0
-page_table_p2: 
-    times 4096 db 0
+page_table_p4: times 4096 db 0
+page_table_p3: times 4096 db 0
+page_table_p2: times 4096 db 0
 
-; --- VARIABLES GLOBALES DEL NÚCLEO EXOKERNEL ---
+align 8
+gdt64_start:
+    dq 0x0000000000000000       ; Descriptor nulo
+    dq 0x00209A0000000000       ; Selector de código de 64 bits (0x08)
+    dq 0x0000920000000000       ; Selector de datos de 64 bits (0x10)
+gdt64_end:
+
+global gdt64_desc
+gdt64_desc:
+    dw gdt64_end - gdt64_start - 1
+    dq gdt64_start
+
+
+; --- VARIABLES GLOBALES DEL NÚCLEO EXOKERNEL (ZONA NOBITS RESB) ---
 SECTION .bss
 align 16
 global cursor_pos, exfs_cur_dir_name, exfs_cur_dir_lba, readline_buf
@@ -181,13 +196,7 @@ exfs_cur_dir_name:  resb 32
 exfs_cur_dir_lba:   resq 1
 readline_buf:       resb 256
 
-resb 4096                   ; Área de Pilas
+resb 4096                   ; Pilas del sistema
 stack_top:
 resb 4096
 stack_top_64:
-
-; =============================================================================
-; INYECCIÓN DINÁMICA DE MÓDULOS DE APLICACIÓN Y SISTEMA
-; =============================================================================
-%include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
