@@ -91,17 +91,25 @@ xboot_init:
     jmp 0x1000:0x0000           ; Salto al Entry Point de 16 bits del Kernel (Inicio de RAM)
 
 ; =============================================================================
-; ESTRUCTURAS DE HARDWARE (GDTs) - CORREGIDO
+; ESTRUCTURAS DE HARDWARE (GDTs) Y VARIABLES - CORREGIDO TOTALMENTE
 ; =============================================================================
 align 8
 gdt32_start:
-    dq 0x0000000000000000
+    dq 0x0000000000000000       ; Descriptor Nulo obligatorio
 gdt32_code:
-    dw 0xFFFF, 0x0000
-    db 0x00, 10011010b, 11001111b, 0x00
+    dw 0xFFFF                   ; Límite (0-15)
+    dw 0x0000                   ; Base (0-15)
+    db 0x00                     ; Base (16-23)
+    db 10011010b                ; Acceso (Código Ejecutable/Lectura)
+    db 11001111b                ; Granularidad
+    db 0x00                     ; Base (24-31)
 gdt32_data:
-    dw 0xFFFF, 0x0000
-    db 0x00, 10010010b, 11001111b, 0x00
+    dw 0xFFFF                   ; Límite (0-15)
+    dw 0x0000                   ; Base (0-15)
+    db 0x00                     ; Base (16-23)
+    db 10010010b                ; Acceso (Datos Lectura/Escritura)
+    db 11001111b                ; Granularidad
+    db 0x00                     ; Base (24-31)
 gdt32_end:
 
 gdt32_descriptor:
@@ -109,13 +117,20 @@ gdt32_descriptor:
     dd gdt32_start
 
 gdt64_start:
-    dq 0x0000000000000000
+    dq 0x0000000000000000       ; Descriptor Nulo obligatorio
 gdt64_code:
-    dq 0x00209A0000000000       ; Código de 64 bits
+    dq 0x00209A0000000000       ; Descriptor de Código de 64 bits plano
 gdt64_data:
-    dq 0x0000920000000000       ; Datos de 64 bits
+    dq 0x0000920000000000       ; Descriptor de Datos de 64 bits plano
 gdt64_end:
 
 gdt64_descriptor:
     dw gdt64_end - gdt64_start - 1
     dd gdt64_start
+
+; --- VARIABLES DE ALMACENAMIENTO ---
+boot_drive db 0x80              ; <--- Aquí definimos la variable que faltaba
+
+; --- FIRMA DE ARRANQUE OBLIGATORIA DEL MBR ---
+times 510 - ($ - $$) db 0       ; Rellena con ceros hasta el byte 510
+dw 0xAA55                       ; Firma mágica de arranque de la BIOS
