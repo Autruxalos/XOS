@@ -3,78 +3,69 @@
 ; =============================================================================
 [BITS 32]
 
-; Cabecera obligatoria Multiboot2 para GRUB / QEMU MBR Trampoline
-SECTION .multiboot
+SECTION .text
 align 8
 multiboot_start:
-    dd 0xE8876D68               ; Número mágico Multiboot2
-    dd 0                        ; Arquitectura: x86 Modo Protegido i386
-    dd multiboot_end - multiboot_start ; Longitud de la cabecera
-    dd -(0xE8876D68 + 0 + (multiboot_end - multiboot_start)) ; Checksum
-    ; Etiquetas requeridas finales
+    dd 0xE8876D68               ; Magia Multiboot2
+    dd 0                        ; Arquitectura x86 i386
+    dd multiboot_end - multiboot_start
+    dd -(0xE8876D68 + 0 + (multiboot_end - multiboot_start))
     dw 0
     dw 0
     dd 8
 multiboot_end:
 
-SECTION .text
 global _start
 _start:
-    cli                         ; Desactivar interrupciones de hardware
-    mov esp, stack_top          ; Establecer puntero de pila temporal de 32 bits
+    cli
+    mov esp, stack_top
 
-    ; --- CONFIGURACIÓN DE PAGINACIÓN BÁSICA PARA MODO LARGO (64-BITS) ---
+    ; --- CONFIGURACIÓN DE PAGINACIÓN (DIRECCIONES FÍSICAS RELLENAS) ---
     mov eax, page_table_p3
-    or eax, 0b11                ; Presente + Lectura/Escritura
+    or eax, 0b11
     mov [page_table_p4], eax
 
     mov eax, page_table_p2
     or eax, 0b11
     mov [page_table_p3], eax
 
-    ; Mapear de forma plana (Identity Mapping) los primeros 2 Megabytes
-    mov eax, 0b10000011         ; Presente + R/W + Huge Page (2MB)
+    mov eax, 0b10000011         ; 2MB Huge Page Identity Mapped
     mov [page_table_p2], eax
 
-    ; Cargar tabla de páginas en el registro de control CR3
     mov eax, page_table_p4
     mov cr3, eax
 
-    ; Activar PAE (Physical Address Extension) en CR4
+    ; Activar PAE
     mov eax, cr4
     or eax, 1 << 5
     mov cr4, eax
 
-    ; Activar Modo Largo en el MSR EFER (Long Mode Enable)
+    ; Activar Long Mode
     mov ecx, 0xC0000080
     rdmsr
     or eax, 1 << 8
     wrmsr
 
-    ; Activar Paginación en CR0 para ingresar oficialmente al entorno de 64 bits
+    ; Activar Paginación
     mov eax, cr0
     or eax, 1 << 31
     mov cr0, eax
 
-    ; Saltar usando la GDT de 64 bits al segmento de código de Modo Largo
+    ; Saltar a Modo Largo de 64 bits usando la GDT
     lgdt [gdt64_desc]
     jmp 0x08:xk_long_mode_entry
 
 [BITS 64]
 xk_long_mode_entry:
-    ; Configurar selectores de segmento de datos en 0 para espacio plano
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov rsp, stack_top_64       ; Pila definitiva de 64 bits
+    mov rsp, stack_top_64
 
-    ; Inicializar pantalla VGA
     call xk_clear_screen
-
-    ; Lanzar el Init del sistema
     call exit_main_executor
 
 .infinite_halt:
@@ -82,15 +73,14 @@ xk_long_mode_entry:
     hlt
     jmp .infinite_halt
 
-; --- INTERFAZ DE DRIVERS DE HARDWARE ---
-
+; --- DRIVERS VGA DEL KERNEL ---
 global xk_clear_screen
 xk_clear_screen:
-    mov rcx, 2000               ; 80 columnas * 25 filas
+    mov rcx, 2000
     mov rdi, 0xB8000
-    mov ax, 0x0F20              ; Fondo negro, texto blanco, carácter espacio
+    mov ax, 0x0F20
     rep stosw
-    mov word [cursor_pos], 0    ; Resetear posición interna
+    mov word [cursor_pos], 0
     ret
 
 global xk_print
@@ -102,7 +92,7 @@ xk_print:
     lodsb
     test al, al
     jz .done
-    cmp al, 10                  ; Salto de línea (\n)
+    cmp al, 10
     je .newline
     mov [rdx], al
     mov [rdx+1], bl
@@ -118,56 +108,18 @@ xk_print:
 .done:
     ret
 
-global xk_println
-xk_println:
+global xk_println:
     call xk_print
     add word [cursor_pos], 80
     ret
 
-global xk_strcmp
-xk_strcmp:
-.loop:
-    mov al, [rsi]
-    mov bl, [rdi]
-    cmp al, bl
-    jne .not_equal
-    test al, al
-    jz .equal
-    inc rsi
-    inc rdi
-    jmp .loop
-.not_equal:
-    mov rax, 1
-    ret
-.equal:
-    xor rax, rax
-    ret
-
-global xk_readline
-xk_readline:
-    mov rsi, .mock_input
-    mov rdi, readline_buf
-    mov rcx, 4
-    rep movsd
-    ret
-.mock_input: db "pwd", 0, 0
-
-global exfs_create_directory_slot
-exfs_create_directory_slot:
-    mov rsi, .msg_ok
-    mov bl, 0x0E                ; Amarillo
-    call xk_println
-    ret
-.msg_ok: db "EXFS: Directorio asignado en Sector de Datos.", 0
-
 ; =============================================================================
-; INYECCIÓN DINÁMICA DE MÓDULOS EN ESPACIO DE CÓDIGO (.text)
+; INYECCIÓN DE CÓDIGO DE SUBMÓDULOS (Permanecen en la sección .text ejecutable)
 ; =============================================================================
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
 
-
-; --- SECCIÓN DE DATOS DE HARDWARE INICIALIZADOS ---
+; --- SECCIÓN DE DATOS CONSTANTES E INICIALIZADOS ---
 SECTION .data
 align 4096
 page_table_p4: times 4096 db 0
@@ -176,27 +128,24 @@ page_table_p2: times 4096 db 0
 
 align 8
 gdt64_start:
-    dq 0x0000000000000000       ; Descriptor nulo
-    dq 0x00209A0000000000       ; Selector de código de 64 bits (0x08)
-    dq 0x0000920000000000       ; Selector de datos de 64 bits (0x10)
+    dq 0x0000000000000000
+    dq 0x00209A0000000000       ; Código 64-bits
+    dq 0x0000000000000000       ; Datos plano
 gdt64_end:
 
-global gdt64_desc
 gdt64_desc:
     dw gdt64_end - gdt64_start - 1
     dq gdt64_start
 
-
-; --- VARIABLES GLOBALES DEL NÚCLEO EXOKERNEL (ZONA NOBITS RESB) ---
+; --- SECCIÓN DE VARIABLES VOLÁTILES (NO ENTRARÁN AL BINARIO FÍSICO) ---
 SECTION .bss
 align 16
-global cursor_pos, exfs_cur_dir_name, exfs_cur_dir_lba, readline_buf
 cursor_pos:         resw 1
 exfs_cur_dir_name:  resb 32
 exfs_cur_dir_lba:   resq 1
 readline_buf:       resb 256
 
-resb 4096                   ; Pilas del sistema
+resb 4096
 stack_top:
 resb 4096
 stack_top_64:
