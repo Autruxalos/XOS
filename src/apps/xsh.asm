@@ -2,7 +2,14 @@
 ; XSH - ENTORNO INTERACTIVO MONOLÍTICO MULTI-ARQUITECTURA (XOS)
 ; =============================================================================
 
+; Silenciar advertencias de relocalización absoluta cruzada de NASM
+[warning -reloc-abs-word]
+[warning -reloc-abs-dword]
+[warning -reloc-abs-qword]
+
 CMD_LEN equ 32                  ; Longitud máxima de comandos soportada
+VGA     equ 0xB8000             ; Dirección base de memoria de video de texto
+COLS    equ 80                  ; Columnas estándar por fila en pantalla
 
 ; =============================================================================
 ; 💻 SECCIÓN 1: INTERFAZ INTERACTIVA DE 16-BITS (MODO REAL)
@@ -140,11 +147,7 @@ buf16    times CMD_LEN db 0
 ; 💻 SECCIÓN 2: INTERFAZ INTERACTIVA DE 32-BITS (MODO PROTEGIDO)
 ; =============================================================================
 [BITS 32]
-XSH32_CURX equ 0
-XSH32_CURY equ 5
 XSH32_BUF  equ 0x11000
-VGA        equ 0xB8000
-COLS       equ 80
 
 _xsh_entry_32:
     mov ax, 0x10
@@ -168,7 +171,7 @@ cls32:
     ret
 
 putch32:
-    push bpt
+    push ebx
     movzx ebx, word [sct32]
     shl ebx, 1
     add ebx, VGA
@@ -177,11 +180,11 @@ putch32:
     mov [ebx], al
     mov byte [ebx+1], 0x0A
     inc word [sct32]
-    pop bpt
+    pop ebx
     ret
 putch32.ok:
     call nl32
-    pop bpt
+    pop ebx
     ret
 
 print32:
@@ -219,8 +222,7 @@ readline32.w:
     jnz readline32.w
     cmp al, 0x1C                ; Enter
     je readline32.ent
-    ; Mapeo rápido básico para demostración de caracteres
-    cmp al, 0x10
+    cmp al, 0x10                ; Escaneo básico de tecla 'Q'
     je .is_q
     jmp readline32.w
 .is_q:
@@ -300,8 +302,6 @@ mhlt32      db "Apagando entorno de 32-bits...", 10, 0
 ; 💻 SECCIÓN 3: INTERFAZ INTERACTIVA DE 64-BITS (MODO LARGO)
 ; =============================================================================
 [BITS 64]
-XSH64_CURX equ 0
-XSH64_CURY equ 10
 XSH64_BUF  equ 0x12000
 
 _xsh_entry_64:
@@ -396,7 +396,7 @@ strcmp64.l:
     mov al, [rsi]
     mov bl, [rdi]
     cmp al, bl
-    kind_ne: jne strcmp64.n
+    jne strcmp64.n              ; Corregido: error de sintaxis previo eliminado
     or al, al
     jz strcmp64.e
     inc rsi
