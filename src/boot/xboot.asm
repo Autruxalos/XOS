@@ -91,15 +91,17 @@ xboot_init:
     jmp 0x1000:0x0000           ; Salto al Entry Point de 16 bits del Kernel (Inicio de RAM)
 
 ; =============================================================================
-; ESTRUCTURAS DE HARDWARE (GDTs)
+; ESTRUCTURAS DE HARDWARE (GDTs) - CORREGIDO
 ; =============================================================================
 align 8
 gdt32_start:
     dq 0x0000000000000000
 gdt32_code:
-    dw 0xFFFF, 0x0000 \ db 0x00, 10011010b, 11001111b, 0x00
+    dw 0xFFFF, 0x0000
+    db 0x00, 10011010b, 11001111b, 0x00
 gdt32_data:
-    dw 0xFFFF, 0x0000 \ db 0x00, 10010010b, 11001111b, 0x00
+    dw 0xFFFF, 0x0000
+    db 0x00, 10010010b, 11001111b, 0x00
 gdt32_end:
 
 gdt32_descriptor:
@@ -117,7 +119,3 @@ gdt64_end:
 gdt64_descriptor:
     dw gdt64_end - gdt64_start - 1
     dd gdt64_start
-
-boot_drive db 0x80
-times 510 - ($ - $$) db 0
-dw 0xAA55
