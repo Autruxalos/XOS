@@ -78,10 +78,11 @@ xk_long_mode_entry:
     call exit_main_executor
 
 .infinite_halt:
-    cli \ hlt
+    cli                         ; Desactivar interrupciones de forma segura
+    hlt                         ; Detener procesador
     jmp .infinite_halt
 
-; --- INTERFAZ DE DRIVERS DE HARDWARE (Rutinas del Kernel Antiguo) ---
+; --- INTERFAZ DE DRIVERS DE HARDWARE ---
 
 global xk_clear_screen
 xk_clear_screen:
@@ -146,8 +147,6 @@ xk_strcmp:
 
 global xk_readline
 xk_readline:
-    ; Entrada: RDI = Buffer de destino. Lee caracteres simulados del teclado PIO
-    ; Para evitar congelamiento sin IRQ activa, lee una entrada predefinida si está vacío
     mov rsi, .mock_input
     mov rcx, 16
     rep movsb
