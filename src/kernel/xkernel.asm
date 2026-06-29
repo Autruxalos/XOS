@@ -1,5 +1,5 @@
 ; =============================================================================
-; XKERNEL Mínimo Viable - XOS (Compila Limpio)
+; XKERNEL - Versión Mínima que Compila
 ; =============================================================================
 org 0x9000
 
@@ -22,17 +22,15 @@ kernel_16_entry:
     jmp 0x08:kernel_32_entry
 
 print_string_16:
-.loop:
-    lodsb
+.loop: lodsb
     or al, al
     jz .done
     mov ah, 0x0E
     int 0x10
     jmp .loop
-.done:
-    ret
+.done: ret
 
-msg_16 db 'XOS 16-bit - XKERNEL cargado', 0x0D, 0x0A, 0
+msg_16 db 'XOS 16-bit cargado', 0x0D, 0x0A, 0
 
 ; =============================================================================
 [BITS 32]
@@ -41,16 +39,7 @@ kernel_32_entry:
     mov ds, ax
     mov ss, ax
     mov esp, stack_top_32
-
-    call clear_screen_32
-    jmp kernel_64_entry   ; Salto directo simplificado
-
-clear_screen_32:
-    mov edi, 0xB8000
-    mov ecx, 80*25
-    mov ax, 0x0720
-    rep stosw
-    ret
+    jmp kernel_64_entry
 
 ; =============================================================================
 [BITS 64]
@@ -68,6 +57,7 @@ kernel_64_entry:
     stosq
 
     call exit_main_executor
+    jmp xk_halt
 
 xk_halt:
     hlt
@@ -76,22 +66,11 @@ xk_halt:
 ; =============================================================================
 ; GDTs
 align 8
-gdt32_desc:
-    dw gdt32_end - gdt32_start - 1
-    dd gdt32_start
-gdt32_start:
-    dq 0
-    dq 0x00CF9A000000FFFF
-    dq 0x00CF92000000FFFF
-gdt32_end:
+gdt32_desc: dw 23, gdt32_start, 0
+gdt32_start: dq 0, 0x00CF9A000000FFFF, 0x00CF92000000FFFF
 
-gdt64_desc:
-    dw gdt64_end - gdt64_start - 1
-    dd gdt64_start
-gdt64_start:
-    dq 0
-    dq 0x00209A0000000000
-gdt64_end:
+gdt64_desc: dw 15, gdt64_start, 0
+gdt64_start: dq 0, 0x00209A0000000000
 
 ; Stacks
 align 16
@@ -101,18 +80,16 @@ stack_bottom_64: times 1024 db 0
 stack_top_64:
 
 ; =============================================================================
-; STUBS para evitar errores
+; STUBS GLOBALES (importantes)
 xk_print:
     ret
+
 xk_println:
-    ret
-xk_init_video:
-    ret
-xk_init_keyboard:
+    call xk_print
     ret
 
 ; =============================================================================
-; Inclusiones (solo una vez)
+; Inclusiones
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
 %include "src/apps/exofetch.asm"
