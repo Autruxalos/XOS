@@ -25,7 +25,7 @@ xboot_main:
 load_kernel:
     mov bx, 0x9000          ; Dirección destino del kernel
     mov ah, 0x02
-    mov al, 128             ; ← LEEMOS 128 SECTORES (64 KB) - Más espacio seguro
+    mov al, 255             ; ← LEEMOS 128 SECTORES (64 KB) - Más espacio seguro
     mov ch, 0x00
     mov dh, 0x00
     mov cl, 0x02            ; Empezar desde sector 2
