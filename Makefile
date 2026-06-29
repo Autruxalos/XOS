@@ -5,7 +5,8 @@
 NASM = nasm
 NASM_FLAGS = -f bin -w+all
 
-BUILD_DIR = build
+BUILD_DIR = buildrun: image
+	qemu-system-i386 -drive format=raw,file=$(IMAGE) -m 32M -cpu 486 -boot c
 IMAGE = $(BUILD_DIR)/XOS.img
 
 # Archivos principales
@@ -40,7 +41,7 @@ image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init-exfs.bi
 	@echo "====== XOS COMPILADO CON EXFS INICIALIZADO ======"
 
 run: image
-	qemu-system-i386 -drive format=raw,file=$(IMAGE),if=floppy -m 32M -cpu 486 -boot a
+	qemu-system-i386 -drive format=raw,file=$(IMAGE) -m 32M -cpu 486 -boot c
 
 run64: image
 	qemu-system-x86_64 -drive format=raw,file=$(IMAGE) -m 64M -cpu qemu64
