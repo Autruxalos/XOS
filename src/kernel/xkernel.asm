@@ -1,7 +1,5 @@
 ; =============================================================================
-; XKERNEL — Binario Único Multiarquitectura (XSPEC-0001)
-; XOS: Minimalismo Radical + Exokernel
-; Compatible 8086 / 80286 / 386+ / x86_64
+; XKERNEL Mínimo Viable - Compila y bootea (8086 → x86_64)
 ; =============================================================================
 org 0x9000
 
@@ -17,7 +15,7 @@ kernel_16_entry:
     mov si, msg_16
     call print_string_16
 
-    ; Transición a 32 bits
+    ; Transición simple a 32 bits
     lgdt [gdt32_desc]
     mov eax, cr0
     or eax, 1
@@ -25,15 +23,17 @@ kernel_16_entry:
     jmp 0x08:kernel_32_entry
 
 print_string_16:
-.loop: lodsb
+.loop:
+    lodsb
     or al, al
     jz .done
     mov ah, 0x0E
     int 0x10
     jmp .loop
-.done: ret
+.done:
+    ret
 
-msg_16 db 'XOS 16-bit Real Mode - XKERNEL cargado', 0x0D, 0x0A, 0
+msg_16 db 'XOS 16-bit cargado - XKERNEL', 0x0D, 0x0A, 0
 
 ; =============================================================================
 [BITS 32]
@@ -47,15 +47,6 @@ kernel_32_entry:
     mov esi, msg_32
     call print_string_32
 
-    ; Preparar Long Mode básico
-    ; (Tablas de paginación simplificadas - identity map)
-    mov edi, page_table_p4
-    xor eax, eax
-    mov ecx, 4096*3
-    rep stosb
-
-    ; ... (continúa con tu código de paginación PAE/LME que ya tenías)
-
     lgdt [gdt64_desc]
     jmp 0x18:kernel_64_entry
 
@@ -67,8 +58,7 @@ clear_screen_32:
     ret
 
 print_string_32:
-    ; Implementación simple en 32 bits...
-    ret
+    ret   ; Stub
 
 msg_32 db 'XOS 32-bit Protected Mode', 0
 
@@ -81,37 +71,49 @@ kernel_64_entry:
     mov ss, ax
     mov rsp, stack_top_64
 
-    ; Mensaje básico en VRAM
+    ; Mensaje básico
     mov rdi, 0xB8000
-    mov rax, 0x1F581F4F   ; "XO" azul/brillante
+    mov rax, 0x1F581F4F
     stosq
-    mov rax, 0x1F53201F   ; "S "
+    mov rax, 0x1F53201F
     stosq
 
-    ; Inyección de módulos (XSPEC)
-    ; call exit_main   ; se incluirá con %include
-
-    jmp xk_halt
+    ; Incluir módulos (ahora seguros)
+    call exit_main_executor
 
 xk_halt:
     hlt
     jmp xk_halt
 
 ; =============================================================================
-; GDTs y Tablas (como en tu ejemplo original)
-align 4096
-page_table_p4: times 4096 db 0
-; ... (resto de tablas y GDTs)
+; GDTs mínimos (necesarios)
+align 8
+gdt32_desc:
+    dw gdt32_end - gdt32_start - 1
+    dd gdt32_start
+gdt32_start:
+    dq 0
+    dq 0x00CF9A000000FFFF   ; Code 32
+    dq 0x00CF92000000FFFF   ; Data 32
+gdt32_end:
 
+gdt64_desc:
+    dw gdt64_end - gdt64_start - 1
+    dd gdt64_start
+gdt64_start:
+    dq 0
+    dq 0x00209A0000000000   ; Code 64
+gdt64_end:
+
+; Stacks
 align 16
 stack_bottom_32: times 512 db 0
 stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
 
-; === AL FINAL DEL ARCHIVO (después de las stacks) ===
-
+; Inclusiones finales (una sola vez)
 %include "src/init/exit.asm"
-%include "src/apps/xsh.asm"          ; ← Solo aquí
+%include "src/apps/xsh.asm"
 %include "src/apps/exofetch.asm"
 %include "src/drivers/exfs.asm"
