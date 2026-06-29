@@ -1,14 +1,15 @@
-; Modulo de inicializacion
 global exit_main_executor
 exit_main_executor:
-    mov qword [exfs_cur_dir_lba], 38
-    
-    mov rsi, .msg_welcome
-    mov bl, 0x0A                ; Texto Verde
+    ; Inicializaciones críticas
+    call xk_init_video
+    call xk_init_keyboard
+    call exfs_mount   ; Monta en RAM o disco
+
+    mov rsi, welcome_msg
+    mov bl, 0x0A
     call xk_print
-    
-    ; Lanzar el bucle principal de la Shell inyectada
+
     call xsh_interactive_loop
     ret
 
-.msg_welcome: db "XOS: Kernel Modo Largo de 64-Bits Iniciado con Exito.", 10, 0
+welcome_msg db "XOS EXIT: Sistema inicializado. Bienvenido.", 10, 0
