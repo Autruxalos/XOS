@@ -1,5 +1,5 @@
 # =============================================================================
-# Makefile Unificado XOS - Adaptado a tu convención (guión medio)
+; Makefile Unificado XOS - Convención con guión medio
 # =============================================================================
 
 NASM = nasm
@@ -11,7 +11,7 @@ IMAGE = $(BUILD_DIR)/XOS.img
 # Archivos principales
 XBOOT_SRC = src/boot/xboot.asm
 XKERNEL_SRC = src/kernel/xkernel.asm
-EXFS_INIT = src/tools/init-exfs.asm     # ← Con guión medio
+EXFS_INIT_SRC = src/tools/init-exfs.asm     # ← Archivo fuente con guión
 
 all: image
 
@@ -25,13 +25,13 @@ $(BUILD_DIR)/xboot.bin: $(XBOOT_SRC) | $(BUILD_DIR)
 $(BUILD_DIR)/xkernel.bin: $(XKERNEL_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASM_FLAGS) $< -o $@
 
-# Inicializador EXFS
-$(BUILD_DIR)/init-exfs.bin: $(EXFS_INIT) | $(BUILD_DIR)
+# Inicializador EXFS (con guión)
+$(BUILD_DIR)/init-exfs.bin: $(EXFS_INIT_SRC) | $(BUILD_DIR)
 	@echo "[NASM] Compilando inicializador EXFS..."
 	$(NASM) $(NASM_FLAGS) $< -o $@
 
-# Crear imagen completa
-image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init_exfs.bin
+# Crear imagen
+image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init-exfs.bin
 	@echo "[IMG] Creando XOS.img con EXFS..."
 	dd if=/dev/zero of=$(IMAGE) bs=512 count=65536 status=none
 	dd if=$(BUILD_DIR)/xboot.bin of=$(IMAGE) conv=notrunc status=none
