@@ -1,5 +1,5 @@
 # =============================================================================
-; Makefile Unificado XOS - Convención con guión medio
+# Makefile Unificado XOS - Convención con guión medio
 # =============================================================================
 
 NASM = nasm
@@ -11,7 +11,7 @@ IMAGE = $(BUILD_DIR)/XOS.img
 # Archivos principales
 XBOOT_SRC = src/boot/xboot.asm
 XKERNEL_SRC = src/kernel/xkernel.asm
-EXFS_INIT_SRC = src/tools/init-exfs.asm     # ← Archivo fuente con guión
+EXFS_INIT_SRC = src/tools/init-exfs.asm
 
 all: image
 
@@ -25,7 +25,7 @@ $(BUILD_DIR)/xboot.bin: $(XBOOT_SRC) | $(BUILD_DIR)
 $(BUILD_DIR)/xkernel.bin: $(XKERNEL_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASM_FLAGS) $< -o $@
 
-# Inicializador EXFS (con guión)
+# Inicializador EXFS
 $(BUILD_DIR)/init-exfs.bin: $(EXFS_INIT_SRC) | $(BUILD_DIR)
 	@echo "[NASM] Compilando inicializador EXFS..."
 	$(NASM) $(NASM_FLAGS) $< -o $@
