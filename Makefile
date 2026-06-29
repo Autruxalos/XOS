@@ -26,7 +26,7 @@ $(BUILD_DIR)/xkernel.bin: $(XKERNEL_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASM_FLAGS) $< -o $@
 
 # Inicializador EXFS
-$(BUILD_DIR)/init_exfs.bin: $(EXFS_INIT) | $(BUILD_DIR)
+$(BUILD_DIR)/init-exfs.bin: $(EXFS_INIT) | $(BUILD_DIR)
 	$(NASM) $(NASM_FLAGS) $< -o $@
 
 # Crear imagen + instalar EXFS
