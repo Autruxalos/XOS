@@ -103,3 +103,13 @@ print:
     jmp .l
 .d: 
     ret
+; XSH Nueva - Comandos simples
+xsh_interactive_loop:
+.prompt:
+    mov si, prompt
+    call bios_print
+    ; Leer input (implementar readline)
+    ; Procesar comandos: make-dir, new, sys-info, sprusr, exofetch
+    jmp .prompt
+
+prompt db "|$ ", 0
