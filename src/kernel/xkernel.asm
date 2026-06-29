@@ -109,8 +109,9 @@ stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
 
-; Al final del [BITS 64] block
+; === AL FINAL DEL ARCHIVO (después de las stacks) ===
+
 %include "src/init/exit.asm"
-%include "src/apps/xsh.asm"     ; Solo aquí
+%include "src/apps/xsh.asm"          ; ← Solo aquí
 %include "src/apps/exofetch.asm"
 %include "src/drivers/exfs.asm"
