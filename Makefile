@@ -32,8 +32,8 @@ image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin | $(BUILD_DIR)
 	@echo "====== ¡SISTEMA XOS COMPILADO CORRECTAMENTE! ======"
 
 run: image
-	@echo "[QEMU] Iniciando entorno controlado x86_64..."
-	qemu-system-x86_64 -drive format=raw,file=$(IMAGE)
+	@echo "[QEMU] Ejecutando en modo de depuracion..."
+	qemu-system-x86_64 -drive format=raw,file=$(IMAGE) -d int,cpu_reset -no-reboot
 
 clean:
 	@echo "[CLEAN] Removiendo archivos temporales..."
