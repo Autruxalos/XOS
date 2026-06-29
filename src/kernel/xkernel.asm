@@ -1,28 +1,16 @@
 ; =============================================================================
-; XKERNEL — Núcleo Base Exokernel Modular (64-bits)
+; XKERNEL — Núcleo Estabilizado Lineal (64-bits)
 ; =============================================================================
 [BITS 32]
+org 0x9000      ; <--- ASEGÚRATE DE QUE ESTA SEA LA DIRECCIÓN DONDE TU XBOOT CARGA EL KERNEL
 
-SECTION .text
-align 8
-multiboot_start:
-    dd 0xE8876D68               ; Magia Multiboot2
-    dd 0                        ; Arquitectura x86 i386
-    dd multiboot_end - multiboot_start
-    dd -(0xE8876D68 + 0 + (multiboot_end - multiboot_start))
-    dw 0
-    dw 0
-    dd 8
-multiboot_end:
-
-global _start
 _start:
     cli
     mov esp, stack_top
 
-    ; --- CONFIGURACIÓN DE PAGINACIÓN BÁSICA ---
+    ; --- CONFIGURACIÓN DE PAGINACIÓN MANUAL (DIRECCIONES ABSOLUTAS ADYACENTES) ---
     mov eax, page_table_p3
-    or eax, 0b11
+    or eax, 0b11                ; Presente + Escritura
     mov [page_table_p4], eax
 
     mov eax, page_table_p2
@@ -51,7 +39,7 @@ _start:
     or eax, 1 << 31
     mov cr0, eax
 
-    ; Saltar a Modo Largo de 64 bits usando la GDT
+    ; Saltar a Modo Largo de 64 bits
     lgdt [gdt64_desc]
     jmp 0x08:xk_long_mode_entry
 
@@ -69,11 +57,14 @@ xk_long_mode_entry:
     call exit_main_executor
 
 .infinite_halt:
-    cli
     hlt
     jmp .infinite_halt
 
-; --- DRIVERS VGA E INTERFACES DEL KERNEL ---
+; --- INCLUSIÓN DE SUBMÓDULOS EN EL ÁREA EJECUTABLE ---
+%include "src/init/exit.asm"
+%include "src/apps/xsh.asm"
+
+; --- DRIVERS VGA E INTERFACES ---
 global xk_clear_screen
 xk_clear_screen:
     mov rcx, 2000
@@ -150,14 +141,7 @@ exfs_create_directory_slot:
     ret
 .msg_ok: db "EXFS: Directorio asignado en Sector de Datos.", 0
 
-; =============================================================================
-; INYECCIÓN DE CÓDIGO DE SUBMÓDULOS
-; =============================================================================
-%include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
-
-; --- SECCIÓN DE DATOS CONSTANTES E INICIALIZADOS ---
-SECTION .data
+; --- ESTRUCTURAS DE HARDWARE Y DATOS ALINEADOS ---
 align 4096
 page_table_p4: times 4096 db 0
 page_table_p3: times 4096 db 0
@@ -165,24 +149,24 @@ page_table_p2: times 4096 db 0
 
 align 8
 gdt64_start:
-    dq 0x0000000000000000
-    dq 0x00209A0000000000       ; Código 64-bits
-    dq 0x0000000000000000       ; Datos plano
+    dq 0x0000000000000000       ; Nulo
+    dq 0x00209A0000000000       ; Código Kernel (Modo Largo)
+    dq 0x0000920000000000       ; Datos Kernel
 gdt64_end:
 
 gdt64_desc:
     dw gdt64_end - gdt64_start - 1
     dq gdt64_start
 
-; --- SECCIÓN DE VARIABLES VOLÁTILES (NO ENTRARÁN AL BINARIO FÍSICO) ---
-SECTION .bss
+; --- VARIABLES GLOBALES DEL SISTEMA ---
 align 16
-cursor_pos:         resw 1
-exfs_cur_dir_name:  resb 32
-exfs_cur_dir_lba:   resq 1
-readline_buf:       resb 256
+cursor_pos:         dw 0
+exfs_cur_dir_name:  times 32 db 0
+exfs_cur_dir_lba:   dq 0
+readline_buf:       times 256 db 0
 
-resb 4096
+; --- PILAS DE EJECUCIÓN ---
+times 1024 db 0
 stack_top:
-resb 4096
+times 1024 db 0
 stack_top_64:
