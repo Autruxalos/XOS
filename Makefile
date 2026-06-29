@@ -1,5 +1,5 @@
 # =============================================================================
-# Makefile Unificado XOS - Soporte 16/32/64 bits + EXFS
+# Makefile Unificado XOS - Adaptado a tu convención (guión medio)
 # =============================================================================
 
 NASM = nasm
@@ -11,7 +11,7 @@ IMAGE = $(BUILD_DIR)/XOS.img
 # Archivos principales
 XBOOT_SRC = src/boot/xboot.asm
 XKERNEL_SRC = src/kernel/xkernel.asm
-EXFS_INIT = src/tools/init_exfs.asm   # Inicializador
+EXFS_INIT = src/tools/init-exfs.asm     # ← Con guión medio
 
 all: image
 
@@ -27,15 +27,16 @@ $(BUILD_DIR)/xkernel.bin: $(XKERNEL_SRC) | $(BUILD_DIR)
 
 # Inicializador EXFS
 $(BUILD_DIR)/init-exfs.bin: $(EXFS_INIT) | $(BUILD_DIR)
+	@echo "[NASM] Compilando inicializador EXFS..."
 	$(NASM) $(NASM_FLAGS) $< -o $@
 
-# Crear imagen + instalar EXFS
+# Crear imagen completa
 image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init_exfs.bin
 	@echo "[IMG] Creando XOS.img con EXFS..."
 	dd if=/dev/zero of=$(IMAGE) bs=512 count=65536 status=none
 	dd if=$(BUILD_DIR)/xboot.bin of=$(IMAGE) conv=notrunc status=none
 	dd if=$(BUILD_DIR)/xkernel.bin of=$(IMAGE) seek=1 conv=notrunc status=none
-	dd if=$(BUILD_DIR)/init_exfs.bin of=$(IMAGE) seek=67 conv=notrunc status=none
+	dd if=$(BUILD_DIR)/init-exfs.bin of=$(IMAGE) seek=67 conv=notrunc status=none
 	@echo "====== XOS COMPILADO CON EXFS INICIALIZADO ======"
 
 run: image
