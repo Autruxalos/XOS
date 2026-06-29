@@ -112,3 +112,5 @@ stack_top_64:
 %include "src/drivers/exfs.asm"
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
+%include "src/apps/exofetch.asm"
+
