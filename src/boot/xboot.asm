@@ -1,81 +1,85 @@
 ; =============================================================================
-; XBOOT — Cargador de Arranque MBR para XOS [XSPEC-0001]
+; XBOOT — Cargador de Arranque MBR Optimizado y Estabilizado (16-bits Modo Real)
 ; =============================================================================
 [BITS 16]
-org 0x7C00
+[ORG 0x7C00]                ; Dirección estándar de carga del MBR en la BIOS
 
-_xboot_start:
-    cli
-    xor ax, ax
+; --- PUNTO DE ENTRADA GENERAL ---
+xboot_main:
+    cli                     ; Desactivar interrupciones durante la configuración crítica
+    xor ax, ax              ; Limpiar registros de segmento a valores seguros (0x0000)
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00
+    mov sp, 0x7C00          ; Establecer la pila justo debajo del cargador de arranque
 
-    ; 1. Activar Línea A20 (Puerto rápido 0x92)
-    in al, 0x92
-    or al, 2
-    out 0x92, al
+    ; Guardar el identificador del disco de arranque entregado por la BIOS
+    mov [BOOT_DRIVE], dl
 
-    ; 2. Cargar el súper kernel en la dirección física 0x10000 (vía ES:BX)
-    mov ax, 0x1000
-    mov es, ax
-    xor bx, bx
+    ; Limpiar la pantalla usando interrupciones de la BIOS
+    mov ax, 0x03
+    int 0x10
 
-    mov ah, 0x02
-    mov al, 38                  ; Sectores a cargar
-    mov ch, 0
-    mov cl, 2                  ; Iniciar desde el Sector 2
-    mov dh, 0
-    mov dl, 0x80               ; Unidad de disco duro primaria
-    int 0x13
-    jc .error
+    ; Mostrar mensaje de diagnóstico inicial
+    mov si, MSG_LOADING
+    call bios_print_string
 
-    ; 3. Inicializar Modo Protegido de 32 bits
-    xor eax, eax
-    mov ax, ds
-    shl eax, 4
-    add eax, gdt32_start
-    mov [gdt32_desc + 2], eax   ; Calcular la dirección lineal real de la GDT
-
-    lgdt [gdt32_desc]
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-
-    ; Salto lejano forzado de 16 bits a segmento de 32 bits para evitar warnings
-    jmp word 0x08:.pmode
-
-[BITS 32]
-.pmode:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
+; --- CARGA DINÁMICA DEL KERNEL DESDE EL DISCO (INT 0x13) ---
+load_kernel:
+    mov bx, 0x9000          ; ES:BX = 0x0000:0x9000 (Dirección destino del Kernel en RAM)
     
-    ; Transferir el Kernel a la posición Multiboot esperada (1 MB)
-    mov esi, 0x10000
-    mov edi, 0x100000
-    mov ecx, 4096
-    rep movsd
+    mov ah, 0x02            ; Función BIOS: Leer sectores del disco
+    mov al, 32              ; ¡CRÍTICO! Leer 32 sectores (16 KB) para que el Kernel no se corte
+    mov ch, 0x00            ; Cilindro 0
+    mov dh, 0x00            ; Cabeza 0
+    mov cl, 0x02            ; Empezar en el Sector 2 (El Sector 1 contiene este MBR)
+    mov dl, [BOOT_DRIVE]    ; Unidad de almacenamiento origen
+    int 0x13                ; Llamar a los servicios de disco de la BIOS
+    jc .disk_error          ; Si el flag de acarreo se activa, hubo un fallo físico de lectura
 
-    ; Salto definitivo al punto de entrada absoluto de 32 bits
-    jmp dword 0x100000
+    ; Verificar si efectivamente se leyeron sectores
+    cmp al, 0
+    jz .disk_error
 
-.error:
+    ; Mostrar mensaje de éxito en la lectura
+    mov si, MSG_LOAD_OK
+    call bios_print_string
+
+    ; Saltar directamente al inicio de tu `src/kernel/xkernel.asm` cargado en 0x9000
+    jmp 0x0000:0x9000
+
+.disk_error:
+    mov si, MSG_ERROR
+    call bios_print_string
+.halt:
+    cli
     hlt
-    jmp .error
+    jmp .halt
 
-align 4
-gdt32_start:
-    dq 0x0000000000000000       ; Descriptor nulo
-    dq 0x00CF9A000000FFFF       ; Selector de código plano de 32 bits (0x08)
-    dq 0x00CF92000000FFFF       ; Selector de datos plano de 32 bits (0x10)
-gdt32_end:
+; --- RUTINAS AUXILIARES EN MODO REAL ---
+bios_print_string:
+    push ax
+    push bx
+    mov ah, 0x0E            ; Modo Teletipo de la BIOS
+    xor bh, bh              ; Página de video 0
+    mov bl, 0x07            ; Atributo de texto estándar
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
+    jmp .loop
+.done:
+    pop bx
+    pop ax
+    ret
 
-gdt32_desc:
-    dw gdt32_end - gdt32_start - 1
-    dd 0                        ; Dirección dinámica calculada en tiempo de ejecución
+; --- SECCIÓN DE CONSTANTES Y VARIABLES STAGE 1 ---
+BOOT_DRIVE:  db 0
+MSG_LOADING: db "XOS: Cargando sectores de almacenamiento desde disco...", 13, 10, 0
+MSG_LOAD_OK: db "XOS: Kernel mapeado en RAM en offset 0x9000. Saltando...", 13, 10, 0
+MSG_ERROR:   db "XOS: CRITICAL BOOT ERROR: Fallo al leer sectores MBR.", 13, 10, 0
 
-times 510-($-$$) db 0
-dw 0xAA55
+; --- FIRMA OBLIGATORIA DE ARRANQUE DE LA BIOS ---
+times 510 - ($ - $$) db 0   ; Rellenar con ceros binarios exactos hasta el byte 510
+dw 0xAA55                   ; Firma mágica de arranque (Sectores legibles por MBR/BIOS)
