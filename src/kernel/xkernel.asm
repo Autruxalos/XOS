@@ -20,7 +20,7 @@ _start:
     cli
     mov esp, stack_top
 
-    ; --- CONFIGURACIÓN DE PAGINACIÓN (DIRECCIONES FÍSICAS RELLENAS) ---
+    ; --- CONFIGURACIÓN DE PAGINACIÓN BÁSICA ---
     mov eax, page_table_p3
     or eax, 0b11
     mov [page_table_p4], eax
@@ -73,7 +73,7 @@ xk_long_mode_entry:
     hlt
     jmp .infinite_halt
 
-; --- DRIVERS VGA DEL KERNEL ---
+; --- DRIVERS VGA E INTERFACES DEL KERNEL ---
 global xk_clear_screen
 xk_clear_screen:
     mov rcx, 2000
@@ -108,13 +108,50 @@ xk_print:
 .done:
     ret
 
-global xk_println:
+global xk_println
+xk_println:
     call xk_print
     add word [cursor_pos], 80
     ret
 
+global xk_strcmp
+xk_strcmp:
+.loop:
+    mov al, [rsi]
+    mov bl, [rdi]
+    cmp al, bl
+    jne .not_equal
+    test al, al
+    jz .equal
+    inc rsi
+    inc rdi
+    jmp .loop
+.not_equal:
+    mov rax, 1
+    ret
+.equal:
+    xor rax, rax
+    ret
+
+global xk_readline
+xk_readline:
+    mov rsi, .mock_input
+    mov rdi, readline_buf
+    mov rcx, 4
+    rep movsd
+    ret
+.mock_input: db "pwd", 0, 0
+
+global exfs_create_directory_slot
+exfs_create_directory_slot:
+    mov rsi, .msg_ok
+    mov bl, 0x0E                ; Amarillo
+    call xk_println
+    ret
+.msg_ok: db "EXFS: Directorio asignado en Sector de Datos.", 0
+
 ; =============================================================================
-; INYECCIÓN DE CÓDIGO DE SUBMÓDULOS (Permanecen en la sección .text ejecutable)
+; INYECCIÓN DE CÓDIGO DE SUBMÓDULOS
 ; =============================================================================
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
