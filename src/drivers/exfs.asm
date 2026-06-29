@@ -1,18 +1,18 @@
 ; =============================================================================
-; EXFS — Sistema de Archivos XOS (8086 → Phenom II)
+; EXFS Driver
 ; =============================================================================
 [BITS 16]
 
 EXFS_MAGIC equ 'EXFS'
 
 struc EXFS_SuperBlock
-    magic resb 4
-    version resw 1
-    total_sectors resd 1
-    xobj_count resw 1
-    root_index resw 1
-    label resb 32
-    reserved resb 462
+    magic           resb 4
+    version         resw 1
+    total_sectors   resd 1
+    xobj_count      resw 1
+    root_index      resw 1
+    label           resb 32
+    reserved        resb 462   ; Solo una vez
 endstruc
 
 struc XOBJ
