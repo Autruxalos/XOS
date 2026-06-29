@@ -108,3 +108,7 @@ stack_bottom_32: times 512 db 0
 stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
+
+%include "src/drivers/exfs.asm"
+%include "src/init/exit.asm"
+%include "src/apps/xsh.asm"
