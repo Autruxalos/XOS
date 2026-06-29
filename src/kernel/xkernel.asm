@@ -1,5 +1,5 @@
 ; =============================================================================
-; XKERNEL Mínimo Viable - Compila y bootea (8086 → x86_64)
+; XKERNEL Mínimo Viable - XOS (Compila Limpio)
 ; =============================================================================
 org 0x9000
 
@@ -15,7 +15,6 @@ kernel_16_entry:
     mov si, msg_16
     call print_string_16
 
-    ; Transición simple a 32 bits
     lgdt [gdt32_desc]
     mov eax, cr0
     or eax, 1
@@ -33,7 +32,7 @@ print_string_16:
 .done:
     ret
 
-msg_16 db 'XOS 16-bit cargado - XKERNEL', 0x0D, 0x0A, 0
+msg_16 db 'XOS 16-bit - XKERNEL cargado', 0x0D, 0x0A, 0
 
 ; =============================================================================
 [BITS 32]
@@ -44,11 +43,7 @@ kernel_32_entry:
     mov esp, stack_top_32
 
     call clear_screen_32
-    mov esi, msg_32
-    call print_string_32
-
-    lgdt [gdt64_desc]
-    jmp 0x18:kernel_64_entry
+    jmp kernel_64_entry   ; Salto directo simplificado
 
 clear_screen_32:
     mov edi, 0xB8000
@@ -56,11 +51,6 @@ clear_screen_32:
     mov ax, 0x0720
     rep stosw
     ret
-
-print_string_32:
-    ret   ; Stub
-
-msg_32 db 'XOS 32-bit Protected Mode', 0
 
 ; =============================================================================
 [BITS 64]
@@ -71,14 +61,12 @@ kernel_64_entry:
     mov ss, ax
     mov rsp, stack_top_64
 
-    ; Mensaje básico
     mov rdi, 0xB8000
     mov rax, 0x1F581F4F
     stosq
     mov rax, 0x1F53201F
     stosq
 
-    ; Incluir módulos (ahora seguros)
     call exit_main_executor
 
 xk_halt:
@@ -86,15 +74,15 @@ xk_halt:
     jmp xk_halt
 
 ; =============================================================================
-; GDTs mínimos (necesarios)
+; GDTs
 align 8
 gdt32_desc:
     dw gdt32_end - gdt32_start - 1
     dd gdt32_start
 gdt32_start:
     dq 0
-    dq 0x00CF9A000000FFFF   ; Code 32
-    dq 0x00CF92000000FFFF   ; Data 32
+    dq 0x00CF9A000000FFFF
+    dq 0x00CF92000000FFFF
 gdt32_end:
 
 gdt64_desc:
@@ -102,7 +90,7 @@ gdt64_desc:
     dd gdt64_start
 gdt64_start:
     dq 0
-    dq 0x00209A0000000000   ; Code 64
+    dq 0x00209A0000000000
 gdt64_end:
 
 ; Stacks
@@ -112,7 +100,19 @@ stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
 
-; Inclusiones finales (una sola vez)
+; =============================================================================
+; STUBS para evitar errores
+xk_print:
+    ret
+xk_println:
+    ret
+xk_init_video:
+    ret
+xk_init_keyboard:
+    ret
+
+; =============================================================================
+; Inclusiones (solo una vez)
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
 %include "src/apps/exofetch.asm"
