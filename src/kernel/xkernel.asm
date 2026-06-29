@@ -109,8 +109,8 @@ stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
 
-%include "src/drivers/exfs.asm"
+; Al final del [BITS 64] block
 %include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
+%include "src/apps/xsh.asm"     ; Solo aquí
 %include "src/apps/exofetch.asm"
-
+%include "src/drivers/exfs.asm"
