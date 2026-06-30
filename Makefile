@@ -70,7 +70,7 @@ $(XPKG): src/pkg/xpkg.asm
 	$(ASM) -f bin $< -o $@
 
 # Soporte del formato ejecutable nativo (xexe.asm)
-$(XEXE): $(SRC_APPS)/xexe.asm
+$(XEXE): src/formats/xexe.asm
 	$(ASM) -f bin $< -o $@
 
 # -----------------------------------------------------------------------------
