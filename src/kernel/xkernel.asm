@@ -1,221 +1,138 @@
-; =============================================================================
-; XKERNEL — Núcleo Exokernel Unificado (Estructura de Alineación Crítica)
-; =============================================================================
-org 0x9000
-
-; Direcciones fijas absolutas en RAM para evitar desalineación por crecimiento de código
-PAGE_TABLE_P4 equ 0x10000
-PAGE_TABLE_P3 equ 0x11000
-PAGE_TABLE_P2 equ 0x12000
+org 0x7C00
+bits 16
 
 ; =============================================================================
-; STAGE 1: ENTORNO DE MODO REAL (16-BITS)
+; 1. FASE DE MODO REAL (16 BITS)
 ; =============================================================================
-[BITS 16]
-_start:
-    cli                         ; Desactivar interrupciones inmediatamente
-
-    ; Sincronizar registros de segmento a cero absoluto
-    xor ax, ax                  
+fase_16_bits:
+    cli                         ; Deshabilitar interrupciones inmediatamente
+    xor ax, ax                  ; Garantizar segmentos en cero absoluto
     mov ds, ax
     mov es, ax
-    mov fs, ax
-    mov gs, ax
     mov ss, ax
-    
-    ; Pila segura: La colocamos en 0x8FFF (justo debajo del kernel, crece hacia abajo)
-    mov sp, 0x8FFF              
+    mov sp, 0x7C00              ; Ubicar la pila antes del código de arranque
 
-    ; Cargar la GDT (Puntero de 6 bytes estructurado para Modo Real)
-    lgdt [gdt_desc]
+    ; Habilitar la línea A20 (Acceso a memoria extendida) de forma precisa
+    in al, 0x92
+    or al, 2
+    out 0x92, al
 
-    ; Activar Modo Protegido (Bit 0 de CR0)
+    ; Cargar la GDT de 32 bits básica
+    lgdt [gdt32_descriptor]
+
+    ; Activar el bit de Modo Protegido (PE) en CR0
     mov eax, cr0
-    or eax, 1                   
+    or eax, 1
     mov cr0, eax
 
-    ; JUMP LEJANO: Conmuta la CPU a Modo Protegido de 32 bits.
-    jmp 0x08:kernel_stage_32
+    ; Salto lejano (Far Jump) para limpiar la cola de ejecución del CPU
+    jmp 0x08:fase_32_bits
 
 ; =============================================================================
-; TABLA GLOBAL DE DESCRIPTORES (GDT UNIFICADA)
+; 2. FASE DE MODO PROTEGIDO (32 BITS)
 ; =============================================================================
-align 8
-gdt_start:
-    dq 0x0000000000000000       ; [0x00] Descriptor Nulo
-    dq 0x00CF9A000000FFFF       ; [0x08] Código de 32 bits (Base=0, Límite=4GB)
-    dq 0x00CF92000000FFFF       ; [0x10] Datos de 32 bits (Base=0, Límite=4GB)
-    dq 0x00209A0000000000       ; [0x18] Código de 64 bits (Modo Largo Nativo)
-gdt_end:
-
-gdt_desc:
-    dw gdt_end - gdt_start - 1  ; Límite de la GDT (2 bytes)
-    dd gdt_start                ; Base de la GDT (4 bytes)
-
-; =============================================================================
-; STAGE 2: ENTORNO DE MODO PROTEGIDO (32-BITS)
-; =============================================================================
-[BITS 32]
-kernel_stage_32:
-    ; Recargar selectores de datos con el segmento de 32 bits (0x10)
-    mov ax, 0x10                
+bits 32
+fase_32_bits:
+    ; Recargar registros de datos con el descriptor de datos de 32 bits (0x10)
+    mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov esp, 0x8FFF             ; Mantener la pila en zona segura
 
-    ; --- LIMPIEZA VISUAL Y FÍSICA DE TABLAS DE PÁGINAS ---
-    mov edi, PAGE_TABLE_P4
+    ; Preparar las tablas de paginación para el Modo Largo (64 bits)
+    ; Mapearemos los primeros 2MB de memoria de forma directa (Identity Mapping)
+    
+    ; 1. Limpiar el espacio de las tablas (Ubicadas en 0x1000, 0x2000, 0x3000)
+    mov edi, 0x1000
+    mov cr3, edi                ; CR0 apuntará a la tabla PML4 en 0x1000
     xor eax, eax
-    mov ecx, 3072               ; Limpiar 12KB (P4, P3 y P2) en la RAM fija
+    mov ecx, 3072               ; Limpiar 12KB (PML4 + PDPT + PD)
     rep stosd
 
-    ; --- MAPEO DE HARDWARE DE MODO LARGO ---
-    mov eax, PAGE_TABLE_P3
-    or eax, 0b11                ; Flags: Presente + Escritura
-    mov [PAGE_TABLE_P4], eax
+    ; 2. Enlazar las tablas usando direccionamiento físico base
+    ; PML4Entry[0] -> apunta a PDPT (0x2000)
+    mov dword [0x1000], 0x2003  ; Presente + Lectura/Escritura
+    ; PDPTEntry[0] -> apunta a PageDirectory (0x3000)
+    mov dword [0x2000], 0x3003  ; Presente + Lectura/Escritura
+    ; PageDirectoryEntry[0] -> Página de 2MB directa
+    mov dword [0x3000], 0x0083  ; Presente + Lectura/Escritura + Bit de tamaño gigante (Page Size = 2MB)
 
-    mov eax, PAGE_TABLE_P2
-    or eax, 0b11                ; Flags: Presente + Escritura
-    mov [PAGE_TABLE_P3], eax
-
-    mov eax, 0b10000011         ; Huge Page de 2MB mapeada por identidad (Bit 7: PS=1)
-    mov [PAGE_TABLE_P2], eax
-
-    ; Inyectar directorio raíz en CR3
-    mov eax, PAGE_TABLE_P4
-    mov cr3, eax
-
-    ; Habilitar PAE (Physical Address Extension) en CR4
+    ; Activar el bit de PAE (Physical Address Extension) en CR4
     mov eax, cr4
-    or eax, 1 << 5
+    or eax, 1 << 5              ; Bit 5 = PAE
     mov cr4, eax
 
-    ; Activar Long Mode en el MSR EFER
-    mov ecx, 0xC0000080
+    ; Activar el bit de Modo Largo (LME) en el MSR de características extendidas (EFER)
+    mov ecx, 0xC0000080         ; Dirección del MSR EFER
     rdmsr
-    or eax, 1 << 8              
+    or eax, 1 << 8              ; Bit 8 = Long Mode Enable
     wrmsr
 
-    ; Activar Paginación definitiva
+    ; Activar la paginación habilitando el bit PG en CR0
     mov eax, cr0
-    or eax, 1 << 31             
+    or eax, 1 << 31             ; Bit 31 = Paging
     mov cr0, eax
 
-    ; JUMP LEJANO DEFINITIVO A MODO LARGO (64-BITS)
-    jmp 0x18:kernel_stage_64
+    ; Cargar la GDT de 64 bits definitiva
+    lgdt [gdt64_descriptor]
+
+    ; Salto lejano definitivo al código de 64 bits
+    jmp 0x08:fase_64_bits
 
 ; =============================================================================
-; STAGE 3: ENTORNO NATIVO DE 64 BITS (EXOKERNEL NUCLEUS)
+; 3. FASE DE MODO LARGO (64 BITS)
 ; =============================================================================
-[BITS 64]
-kernel_stage_64:
-    ; Configurar el entorno plano de 64 bits
+bits 64
+fase_64_bits:
+    ; Inicializar selectores de segmento en Modo Largo (la mayoría deben ser 0)
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov rsp, stack_top_64       ; Mover la pila a la memoria alta definitiva
 
-    ; Inicializar sistema operativo
-    call xk_clear_screen
-    call exit_main_executor
+    ; Pintar un carácter indicador en la esquina superior izquierda de la pantalla
+    ; Dirección de la memoria de video de texto: 0xB8000
+    mov rax, 0x0F4F0F580F4F580F ; Mensaje "XOS" alternado con atributos de color
+    mov qword [0xB8000], rax
 
-.infinite_halt:
-    hlt
-    jmp .infinite_halt
-
-; =============================================================================
-; INCLUSIÓN DE SUBMÓDULOS (COMPATIBILIDAD XSPEC)
-; =============================================================================
-%include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
+.bucle_kernel:
+    hlt                         ; Detener el procesador de forma segura hasta recibir eventos externos
+    jmp .bucle_kernel
 
 ; =============================================================================
-; DRIVERS VGA Y CONTROL VISUAL (64-BITS)
+; ESTRUCTURAS DE DATOS Y TABLAS (GDT)
 ; =============================================================================
-global xk_clear_screen
-xk_clear_screen:
-    mov rcx, 2000
-    mov rdi, 0xB8000
-    mov ax, 0x0F20
-    rep stosw
-    mov word [cursor_pos], 0
-    ret
 
-global xk_print
-xk_print:
-    movzx rdx, word [cursor_pos]
-    shl rdx, 1
-    add rdx, 0xB8000
-.loop:
-    lodsb
-    test al, al
-    jz .done
-    cmp al, 10
-    je .newline
-    mov [rdx], al
-    mov [rdx+1], bl
-    add rdx, 2
-    inc word [cursor_pos]
-    jmp .loop
-.newline:
-    add word [cursor_pos], 80
-    movzx rdx, word [cursor_pos]
-    shl rdx, 1
-    add rdx, 0xB8000
-    jmp .loop
-.done:
-    ret
+align 4
+gdt32_start:
+    dd 0, 0                     ; Descriptor nulo
+    ; Selector de código 32 bits (0x08): Base=0, Límite=0xFFFFF, Atributos comunes
+    dw 0xFFFF, 0x0000, 0x9A00, 0x00CF
+    ; Selector de datos 32 bits (0x10): Base=0, Límite=0xFFFFF
+    dw 0xFFFF, 0x0000, 0x9200, 0x00CF
+gdt32_end:
 
-global xk_println
-xk_println:
-    call xk_print
-    add word [cursor_pos], 80
-    ret
+gdt32_descriptor:
+    dw gdt32_end - gdt32_start - 1
+    dd gdt32_start
 
-global xk_strcmp
-xk_strcmp:
-.loop:
-    mov al, [rsi]
-    mov bl, [rdi]
-    cmp al, bl
-    jne .not_equal
-    test al, al
-    jz .equal
-    inc rsi
-    inc rdi
-    jmp .loop
-.not_equal:
-    mov rax, 1
-    ret
-.equal:
-    xor rax, rax
-    ret
+align 4
+gdt64_start:
+    dd 0, 0                     ; Descriptor nulo
+    ; Selector de código 64 bits (0x08): Atributo de modo largo activo (L=1)
+    dw 0, 0, 0x9A00, 0x0020
+    ; Selector de datos 64 bits (0x10)
+    dw 0, 0, 0x9200, 0x0000
+gdt64_end:
 
-global xk_readline
-xk_readline:
-    mov rsi, .mock_input
-    mov rdi, readline_buf
-    mov rcx, 4
-    rep movsd
-    ret
-.mock_input: db "pwd", 0, 0
+gdt64_descriptor:
+    dw gdt64_end - gdt64_start - 1
+    dd gdt64_start
 
-; =============================================================================
-; VARIABLES GLOBALES DEL SISTEMA
-; =============================================================================
-align 16
-cursor_pos:         dw 0
-exfs_cur_dir_name:  times 32 db 0
-exfs_cur_dir_lba:   dq 0
-readline_buf:       times 256 db 0
-
-; --- PILA NATIVA 64-BITS ---
-align 16
-times 2048 db 0
-stack_top_64:
+; Firma de arranque obligatoria para el sector 0 del disco
+times 510-($-$$) db 0
+dw 0xAA55
