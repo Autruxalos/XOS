@@ -1,5 +1,17 @@
 org 0x100                       ; Formato estándar ejecutable tipo .COM (Máximo 64K)
-bits 16
+
+; =============================================================================
+; CONFIGURACIÓN DE ARQUITECTURA UNIVERSAL PARA XPKG EN NASM
+; =============================================================================
+bits 16                         ; El programa inicia en Modo Real / Entorno de 16 bits
+cpu 386                         ; Habilita el set de instrucciones de 32 bits (EAX, EBX, etc.)
+
+; Nota para NASM: Aunque estemos en un binario de 16 bits, forzamos la aceptación 
+; de registros de 64 bits (RAX, RBX...) mediante codificación manual o compatibilidad.
+%ifndef __OUTPUT_FORMAT_elf64__
+    ; Habilitamos soporte extendido para que no falle al compilar instrucciones de 64 bits
+    cpu x64                     
+%endif
 
 xpkg_init:
     ; --- CONFIGURACIÓN DE SELECCIÓN DE VERSIÓN ---
@@ -44,8 +56,15 @@ xpkg_init:
     lodsd                       ; Tamaño del archivo (4 bytes)
     mov [size_temporal], eax
     
-    lodsq                       ; Checksum / Firma de integridad (8 bytes)
-    mov [checksum_esperado], rax
+    ; --- SOLUCIÓN DE COMPATIBILIDAD DE 64 BITS ---
+    ; lodsq no es legal en modo nativo de 16 bits. Leemos los 8 bytes usando dos lodsd.
+    lodsd                       ; Parte baja del Checksum -> EAX
+    mov edx, eax
+    lodsd                       ; Parte alta del Checksum -> EAX
+    
+    ; Almacenamos el Checksum completo de 8 bytes en memoria usando registros de 32 bits
+    mov [checksum_esperado], edx
+    mov [checksum_esperado + 4], eax
 
     ; --- PROCESAMIENTO DEPENDIENDO DE LA VERSIÓN ---
     cmp word [modo_seguro], 1
@@ -57,9 +76,15 @@ xpkg_init:
     call calcular_checksum
     pop si                      ; Restaurar puntero de datos del paquete
     
-    cmp rax, [checksum_esperado]
+    ; Comparación de Checksum de 64 bits usando registros de 32 bits
+    mov edx, [checksum_esperado]
+    mov eax, [checksum_esperado + 4]
+    cmp ebx, edx                ; ebx tiene la parte baja calculada
+    jne .error_seguridad
+    cmp ecx, eax                ; ecx tiene la parte alta calculada
     je .extraer_directo
     
+.error_seguridad:
     ; Error de integridad (Malware o Corrupción detectada)
     mov si, msg_malware
     call imprimir_texto
@@ -95,14 +120,16 @@ xpkg_init:
 ; =============================================================================
 ; RUTINA: calcular_checksum (Versión Segura)
 ; Entrada: DS:SI = Puntero a los datos del archivo, ECX = Tamaño en bytes
-; Salida: RAX = Checksum calculado (Algoritmo de suma modular simple de 16/32 bits)
+; Salida: ECX:EBX = Checksum calculado de 64 bits (sin usar registros RAX/RBX directos)
 ; =============================================================================
 calcular_checksum:
-    xor rax, rax
+    xor ebx, ebx                ; Parte baja del acumulador
+    xor ecx, ecx                ; Parte alta del acumulador
 .bucle:
-    xor ebx, ebx
-    mov bl, [si]                ; Leer byte a byte
-    add rax, rbx                ; Sumar al acumulador
+    xor edx, edx
+    mov dl, [si]                ; Leer byte a byte
+    add ebx, edx                ; Sumar a la parte baja
+    adc ecx, 0                  ; Acarrear a la parte alta si desborda
     inc si
     loop .bucle
     ret
