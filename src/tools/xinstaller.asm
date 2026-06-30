@@ -1,8 +1,8 @@
 org 0x100                       ; Formato ejecutable plano de 16 bits (Estilo .COM)
 bits 16
 
-; Inclusión de la cabecera modular
-%include "../include/exfs.inc"
+; Cambia la ruta rota por la ruta raíz correcta:
+%include "src/include/exfs.inc"
 
 xinstaller_inicio:
     ; 1. Limpiar pantalla para la interfaz del instalador
