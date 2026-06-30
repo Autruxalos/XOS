@@ -1,5 +1,5 @@
 ; =============================================================================
-; XKERNEL - Transiciones Correctas 16→32→64 bits
+; XKERNEL COMPLETO - Transiciones 16/32/64 + XSH básica
 ; =============================================================================
 org 0x9000
 
@@ -15,12 +15,11 @@ kernel_16_entry:
     mov si, msg_16
     call print_16
 
-    ; Transición a 32 bits
     lgdt [gdt32_desc]
     mov eax, cr0
     or eax, 1
     mov cr0, eax
-    jmp 0x08:kernel_32_entry     ; Far jump
+    jmp 0x08:kernel_32_entry
 
 print_16:
 .loop:
@@ -46,9 +45,8 @@ kernel_32_entry:
     mov esi, msg_32
     call print_32
 
-    ; Transición a 64 bits
     lgdt [gdt64_desc]
-    jmp 0x18:kernel_64_entry     ; Far jump
+    jmp 0x18:kernel_64_entry
 
 print_32:
 .loop:
@@ -73,21 +71,39 @@ kernel_64_entry:
     mov rsp, stack_top_64
 
     mov rdi, 0xB8000
-    mov rax, 0x1F4F1F58   ; "XO"
+    mov rax, 0x1F581F4F
+    stosq
+    mov rax, 0x1F53201F
     stosq
 
-    mov rsi, msg_64
-    call xk_print
-
-    jmp xk_halt
-
-msg_64 db " 64-bit - XOS Iniciado!", 0
+    call xsh_start
 
 xk_halt:
     hlt
     jmp xk_halt
 
 ; =============================================================================
+; XSH Básica embebida
+xsh_start:
+    mov rsi, prompt
+    call vga_print
+    jmp xk_halt   ; Por ahora solo muestra prompt
+
+prompt db " |$ ", 0
+
+vga_print:
+    mov rdi, 0xB8000 + 160
+.loop:
+    lodsb
+    or al, al
+    jz .done
+    mov [rdi], al
+    mov byte [rdi+1], 0x0F
+    add rdi, 2
+    jmp .loop
+.done:
+    ret
+
 ; GDTs
 align 8
 gdt32_desc:
@@ -95,8 +111,8 @@ gdt32_desc:
     dd gdt32_start
 gdt32_start:
     dq 0
-    dq 0x00CF9A000000FFFF   ; Code 32
-    dq 0x00CF92000000FFFF   ; Data 32
+    dq 0x00CF9A000000FFFF
+    dq 0x00CF92000000FFFF
 gdt32_end:
 
 gdt64_desc:
@@ -104,7 +120,7 @@ gdt64_desc:
     dd gdt64_start
 gdt64_start:
     dq 0
-    dq 0x00209A0000000000   ; Code 64
+    dq 0x00209A0000000000
 gdt64_end:
 
 align 16
@@ -112,12 +128,3 @@ stack_bottom_32: times 512 db 0
 stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
-
-; Stubs
-xk_print:
-    ret
-
-; Inclusiones
-%include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
-%include "src/drivers/exfs.asm"
