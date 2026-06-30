@@ -50,7 +50,7 @@ xboot_inicio:
     mov bx, 0x1000  
     mov es, bx
     xor bx, bx                      ; ES:BX = 0x1000:0x0000 (Dirección física 0x10000)
-    call cargar_cadena_bloques  
+    ;call cargar_cadena_bloques  
     
     ; Restaurar segmento ES a cero por seguridad
     xor ax, ax
