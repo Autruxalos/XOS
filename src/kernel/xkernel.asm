@@ -1,25 +1,13 @@
 ; =============================================================================
 ; XKERNEL - XOS Exokernel  [XSPEC-0004]
 ; =============================================================================
-[BITS 16]
-org 0x9000
- 
-kernel_16_entry:
-    cli
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    mov sp, 0x8000
- 
-    mov si, msg_16
-    call print16
- 
-    lgdt [gdt32_ptr]
-    mov eax, cr0
-    or  eax, 1
-    mov cr0, eax
-    jmp 0x08:kernel_32_entry
+mov ax,0xb800
+mov es,ax
+
+mov byte [es:0],'K'
+mov byte [es:1],0x0A
+
+jmp $
  
 print16:
     mov ah, 0x0E
