@@ -1,7 +1,8 @@
 org 0x100                       ; Formato ejecutable plano de 16 bits (Estilo .COM)
 bits 16
 
-%include "src/include/exfs.inc"
+; Modificación de ruta relativa para la nueva estructura modular
+%include "../include/exfs.inc"
 
 xinstaller_inicio:
     ; 1. Limpiar pantalla para la interfaz del instalador
@@ -11,9 +12,7 @@ xinstaller_inicio:
     mov si, msg_bienvenida
     call impr_cadena
 
-    ; 2. Detectar unidades de almacenamiento disponibles a través de la BIOS
-    ; El instalador asume por defecto la unidad de disco actual proporcionada por el sistema
-    ; Si se ejecuta desde un disco de rescate, el número de unidad (DL) suele ser 0x80 (Primer HDD/USB)
+    ; 2. Configurar la unidad física destino (0x80 = Primer HDD/USB en BIOS)
     mov byte [unidad_destino], 0x80 
 
     mov si, msg_confirmacion
@@ -22,9 +21,9 @@ xinstaller_inicio:
 .esperar_confirmacion:
     mov ah, 0x00
     int 0x16                    ; Esperar pulsación de tecla
-    cmp al, 'Y'                 ; Confirmar con 'Y' (Mayúscula)
+    cmp al, 'Y'                 ; Confirmar con 'Y'
     je .iniciar_escritura
-    cmp al, 'y'                 ; Confirmar con 'y' (Minúscula)
+    cmp al, 'y'                 ; Confirmar con 'y'
     je .iniciar_escritura
     cmp al, 27                  ; Cancelar con ESC
     je .cancelar
@@ -74,7 +73,7 @@ xinstaller_inicio:
     call impr_cadena
 
     mov ax, 65                  ; Iniciar en Sector Lógico 65 (Área de datos pura)
-    mov cx, 64                  ; Escribir el bloque consolidado de aplicaciones (Ajustable)
+    mov cx, 64                  ; Escribir el bloque consolidado de aplicaciones
     mov bx, buffer_datos_apps   
     call disco_escribir_sector
     jc .error_fatal
@@ -102,7 +101,6 @@ xinstaller_inicio:
 
 ; =============================================================================
 ; DRIVER DE ESCRITURA FÍSICA (BIOS INT 13h / AH=03h)
-; Entrada: AX = Sector Lógico LBA, CX = Cantidad, BX = Puntero RAM origen
 ; =============================================================================
 disco_escribir_sector:
     push ax
@@ -124,7 +122,7 @@ disco_escribir_sector:
     and dh, 0x01                ; Cabeza física final en DH
     
     mov dl, [unidad_destino]    ; Recuperar número de unidad rígida
-    mov ax, 0x0301              ; AH=03h (Función Escribir), AL=01h (1 sector por ciclo)
+    mov ax, 0x0301              ; AH=03h (Escribir), AL=01h (1 sector por ciclo)
     int 0x13                    ; Llamada de bajo nivel a la controladora
 
     pop dx
@@ -169,11 +167,9 @@ unidad_destino       db 0
 
 ; =============================================================================
 ; BÚFERES DE MEMORIA VIRTUAL PARA LOS COMPONENTES
-; El script de empaquetado final incrustará los binarios compilados aquí
 ; =============================================================================
 align 16
 buffer_xboot:
-    ; Se reserva espacio o se incluye directamente el binario
     times 512 db 0
 
 buffer_xfat:
@@ -183,5 +179,4 @@ buffer_root:
     times 32 * 512 db 0         ; 32 sectores limpios para las entradas del directorio
 
 buffer_datos_apps:
-    ; Aquí es donde se concatenan xsh.xexe, xfl.xexe, xdt.xexe y exofetch.xexe
-    times 64 * 512 db 0         ; Espacio de datos para el despliegue inicial
+    times 64 * 512 db 0         ; Espacio de datos para la concatenación de utilidades
