@@ -120,5 +120,4 @@ xk_print:
 ; Inclusiones
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
-%include "src/apps/exofetch.asm"
 %include "src/drivers/exfs.asm"
