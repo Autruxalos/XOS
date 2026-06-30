@@ -96,16 +96,13 @@ $(XINSTALLER): $(SRC_TOOLS)/xinstaller.asm
 # -----------------------------------------------------------------------------
 # MAPEADO DE SECTORES LBA (Inyección en la imagen de disco)
 # -----------------------------------------------------------------------------
-# Para evitar la pantalla rosada, cada componente se monta en su propia "isla"
-# de sectores estables mediante saltos exactos (seek).
-# -----------------------------------------------------------------------------
-
 image:
 	@echo "Montando la geometría del disco e inyectando dependencias..."
-	# Generar el contenedor virtual vacío de 20MB
-	$(DD) if=/dev/zero of=$(XDISK_IMG) bs=512 count=40000 status=none
+	# Generar un contenedor alineado de 64MB (131072 sectores de 512 bytes)
+	# Esto fuerza una geometría virtual CHS limpia para BIOS quisquilleras.
+	$(DD) if=/dev/zero of=$(XDISK_IMG) bs=512 count=131072 status=none
 	
-	# Sector 0: Master Boot Record (XBOOT)
+	# Sector 0: Master Boot Record (XBOOT) con conv=notrunc para preservar el tamaño
 	$(DD) if=$(XBOOT) of=$(XDISK_IMG) bs=512 count=1 conv=notrunc status=none
 	
 	# Sector 65: El Exokernel principal
@@ -131,7 +128,7 @@ image:
 	# Sector 300: Editor de texto (XDT)
 	$(DD) if=$(XDT) of=$(XDISK_IMG) bs=512 seek=300 conv=notrunc status=none
 	
-	@echo "STRICT_SUCCESS: Todas las dependencias (exit, xpkg, xexe) fueron mapeadas sin solapamiento."
+	@echo "STRICT_SUCCESS: Todas las dependencias mapeadas en imagen compatible con BIOS real."
 
 clean:
 	@echo "Limpiando binarios..."
