@@ -1,67 +1,104 @@
 # =============================================================================
-# Makefile Unificado XOS (Edición Definitiva - i486 / x86_64)
+# MAKEFILE COMPATIBLE CON BIOS QUISQUILLAS - PROYECTO XOS
 # =============================================================================
 
-# Configuración del compilador Assembler
-NASM       = nasm
-NASM_FLAGS = -f bin -w+all
+# Compiladores y herramientas
+ASM      = nasm
+CC       = gcc
+LD       = ld
+DD       = dd
+RM       = rm -f
 
-# Directorios y Archivos de salida
-BUILD_DIR  = build
-IMAGE      = $(BUILD_DIR)/XOS.img
+# Directorios del proyecto
+SRC_BOOT    = src/boot
+SRC_KERNEL  = src/kernel
+SRC_DRIVERS = src/kernel/drivers
+SRC_INIT    = src/init
+SRC_APPS    = src/apps
+SRC_TOOLS   = src/tools
+BIN_DIR     = bin
 
-# Archivos Fuente
-XBOOT_SRC     = src/boot/xboot.asm
-XKERNEL_SRC   = src/kernel/xkernel.asm
-EXFS_INIT_SRC = src/tools/init-exfs.asm
+# Binarios finales de salida
+XBOOT       = $(BIN_DIR)/xboot.bin
+XKERNEL     = $(BIN_DIR)/xkernel.bin
+XSH         = $(BIN_DIR)/xsh.bin
+XFL         = $(BIN_DIR)/xfl.bin
+XDT         = $(BIN_DIR)/xdt.bin
+XINSTALLER  = $(BIN_DIR)/xinstaller.com
+XDISK_IMG   = $(BIN_DIR)/xos_dist.img
 
-# Objetivo por defecto
-all: image
+.PHONY: all clean directories image
 
-# Creación del directorio de compilación si no existe
-$(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR)
+# Regla principal
+all: directories $(XBOOT) $(XKERNEL) $(XSH) $(XFL) $(XDT) $(XINSTALLER) image
 
-# Reglas de compilación de binarios planos
-$(BUILD_DIR)/xboot.bin: $(XBOOT_SRC) | $(BUILD_DIR)
-	@echo "[NASM] Compilando Bootloader..."
-	$(NASM) $(NASM_FLAGS) $< -o $@
+# Crear directorio de binarios si no existe
+directories:
+	@mkdir -p $(BIN_DIR)
 
-$(BUILD_DIR)/xkernel.bin: $(XKERNEL_SRC) | $(BUILD_DIR)
-	@echo "[NASM] Compilando Kernel..."
-	$(NASM) $(NASM_FLAGS) $< -o $@
+# -----------------------------------------------------------------------------
+# COMPILACIÓN DE COMPONENTES BASE (Bajo nivel estricto)
+# -----------------------------------------------------------------------------
 
-$(BUILD_DIR)/init-exfs.bin: $(EXFS_INIT_SRC) | $(BUILD_DIR)
-	@echo "[NASM] Compilando init-exfs..."
-	$(NASM) $(NASM_FLAGS) $< -o $@
+# 1. Sector de arranque (Alineado estrictamente a 512 bytes gracias a las directivas internas)
+$(XBOOT): $(SRC_BOOT)/xboot.asm $(SRC_DRIVERS)/exfs.asm
+	$(ASM) -f bin $< -o $@
 
-# Construcción de la imagen de disco cruda (.img)
-image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init-exfs.bin
-	@echo "[IMG] Generando imagen de disco vacía..."
-	dd if=/dev/zero of=$(IMAGE) bs=512 count=131072 status=none
-	@echo "[IMG] Escribiendo Bootloader (Sector 0)..."
-	dd if=$(BUILD_DIR)/xboot.bin of=$(IMAGE) conv=notrunc status=none
-	@echo "[IMG] Escribiendo Kernel (Sector 1 al 66)..."
-	dd if=$(BUILD_DIR)/xkernel.bin of=$(IMAGE) seek=1 conv=notrunc status=none
-	@echo "[IMG] Escribiendo Sistema de Archivos exFS (Sector 67)..."
-	dd if=$(BUILD_DIR)/init-exfs.bin of=$(IMAGE) seek=67 conv=notrunc status=none
-	@echo "========================================="
-	@echo "      ====== XOS COMPILADO ======"
-	@echo "========================================="
+# 2. El Exokernel (Compilado para el Modo Largo de tu Phenom II)
+$(XKERNEL): $(SRC_KERNEL)/xkernel.asm
+	$(ASM) -f bin $< -o $@
 
-# Ejecución en entorno nativo i486 (Modo protegido 32-bits emulado)
-run: image
-	@echo "[QEMU] Iniciando emulación compatible con Modo Largo (x86_64)..."
-	qemu-system-x86_64 -cpu qemu64 -drive format=raw,file=build/XOS.img -d int,cpu_reset -no-reboot -no-shutdown
+# -----------------------------------------------------------------------------
+# COMPILACIÓN DE ESPACIO DE USUARIO Y UTILIDADES (16-bits Reales)
+# -----------------------------------------------------------------------------
 
-# Ejecución alternativa en entorno x86_64
-run64: image
-	@echo "[QEMU] Iniciando emulación x86_64..."
-	qemu-system-x86_64 -drive format=raw,file=$(IMAGE) -m 64M -cpu qemu64
+# 3. La Shell con comandos lógicos
+$(XSH): $(SRC_APPS)/xsh.asm
+	$(ASM) -f bin $< -o $@
 
-# Limpieza del espacio de trabajo
+# 4. Administrador de archivos
+$(XFL): $(SRC_APPS)/xfl.asm
+	$(ASM) -f bin $< -o $@
+
+# 5. Editor de texto ultra ligero
+$(XDT): $(SRC_APPS)/xdt.asm
+	$(ASM) -f bin $< -o $@
+
+# 6. El Instalador Nativo de 16 bits (.COM ejecutable desde entorno DOS/XOS)
+$(XINSTALLER): $(SRC_TOOLS)/xinstaller.asm
+	$(ASM) -f bin $< -o $@
+
+# -----------------------------------------------------------------------------
+# CREACIÓN DE LA IMAGEN DE DISCO LBA INMUNE A FALLOS DE BIOS
+# -----------------------------------------------------------------------------
+# Explicación del mapa de sectores estructurado:
+# Sector 0 (LBA 0): XBOOT (MBR con tabla de partición falsa)
+# Sectores 1-32 (LBA 1): Reservado para XFAT (Lleno de ceros inicialmente)
+# Sectores 33-64 (LBA 33): Reservado para Root Directory
+# Sector 65+ (LBA 65): Bloque unificado de Aplicaciones (XSH, XFL, XDT, etc.)
+# -----------------------------------------------------------------------------
+
+image:
+	@echo "Generando imagen de almacenamiento compatible..."
+	# Creación de un disco virtual limpio de 20 Megabytes (Ajustable a tus necesidades)
+	$(DD) if=/dev/zero of=$(XDISK_IMG) bs=512 count=40000 status=none
+	
+	# Inyección del MBR/XBOOT exactamente en el Sector 0
+	$(DD) if=$(XBOOT) of=$(XDISK_IMG) bs=512 count=1 conv=notrunc status=none
+	
+	# Inyección del Kernel en su sector asignado (Supongamos sector LBA 65 para datos puros)
+	$(DD) if=$(XKERNEL) of=$(XDISK_IMG) bs=512 seek=65 conv=notrunc status=none
+	
+	# Concatenación y alineación secuencial de tus apps del sistema en sectores continuos
+	# Nota: Esto prepara la estructura interna que leerá tu driver de EXFS
+	$(DD) if=$(XSH) of=$(XDISK_IMG) bs=512 seek=200 conv=notrunc status=none
+	$(DD) if=$(XFL) of=$(XDISK_IMG) bs=512 seek=250 conv=notrunc status=none
+	$(DD) if=$(XDT) of=$(XDISK_IMG) bs=512 seek=300 conv=notrunc status=none
+	
+	@echo "STRICT_SUCCESS: Imagen '$(XDISK_IMG)' lista para flashear en USB o HDD físico."
+
+# Limpieza de archivos compilados
 clean:
-	@echo "[CLEAN] Eliminando archivos del directorio build..."
-	rm -rf $(BUILD_DIR)
-
-.PHONY: all image run run64 clean
+	@echo "Limpiando binarios anteriores..."
+	$(RM) $(BIN_DIR)/*.bin $(BIN_DIR)/*.com $(BIN_DIR)/*.img
+	@rmdir $(BIN_DIR) 2>/dev/null || true
