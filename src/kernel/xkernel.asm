@@ -1,3 +1,4 @@
+
 ; =============================================================================
 ; XKERNEL - XOS Exokernel  [XSPEC-0004]
 ; =============================================================================
@@ -26,67 +27,7 @@ print16:
     mov bx, 0x0007
 .lp:
     lodsb
-    or  al, al    call xk_putchar
-    mov  al, 8
-    call xk_putchar
-    pop  rax
-    jmp  .rd
- 
-.enter:
-    mov  byte [rdi], 0
-    mov  rax, rdx
-    push rax
-    mov  al, 10
-    mov  bl, 0x07
-    call xk_putchar
-    pop  rax
-    pop  rcx
-    pop  rdi
-    pop  rdx
-    pop  rbx
-    ret
- 
-; =============================================================================
-; STRCMP — RSI vs RDI, retorna RAX=0 si iguales
-; =============================================================================
-
-global xk_strcmp
-xk_strcmp:
-    push rsi
-    push rdi
-    push rbx
-.lp:
-    mov  al, [rsi]
-    mov  bl, [rdi]
-    cmp  al, bl
-    jne  .neq
-    test al, al
-    jz   .eq
-    inc  rsi
-    inc  rdi
-    jmp  .lp
-.eq:
-    xor  rax, rax
-    pop  rbx
-    pop  rdi
-    pop  rsi
-    ret
-.neq:
-    mov  rax, 1
-    pop  rbx
-    pop  rdi
-    pop  rsi
-    ret
- 
-; =============================================================================
-; INCLUSIONES
-; =============================================================================
-
-%include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
-%include "src/apps/exofetch.asm"
-%include "src/drivers/exfs.asm
-
+    or  al, al
     jz  .ret
     int 0x10
     jmp .lp
@@ -197,67 +138,7 @@ kernel_64_entry:
     cli
     hlt
     jmp .halt
-     call xk_putchar
-    mov  al, 8
-    call xk_putchar
-    pop  rax
-    jmp  .rd
  
-.enter:
-    mov  byte [rdi], 0
-    mov  rax, rdx
-    push rax
-    mov  al, 10
-    mov  bl, 0x07
-    call xk_putchar
-    pop  rax
-    pop  rcx
-    pop  rdi
-    pop  rdx
-    pop  rbx
-    ret
- 
-; =============================================================================
-; STRCMP — RSI vs RDI, retorna RAX=0 si iguales
-; =============================================================================
-
-global xk_strcmp
-xk_strcmp:
-    push rsi
-    push rdi
-    push rbx
-.lp:
-    mov  al, [rsi]
-    mov  bl, [rdi]
-    cmp  al, bl
-    jne  .neq
-    test al, al
-    jz   .eq
-    inc  rsi
-    inc  rdi
-    jmp  .lp
-.eq:
-    xor  rax, rax
-    pop  rbx
-    pop  rdi
-    pop  rsi
-    ret
-.neq:
-    mov  rax, 1
-    pop  rbx
-    pop  rdi
-    pop  rsi
-    ret
- 
-; =============================================================================
-; INCLUSIONES
-; =============================================================================
-
-%include "src/init/exit.asm"
-%include "src/apps/xsh.asm"
-%include "src/apps/exofetch.asm"
-%include "src/drivers/exfs.asm
-
 ; =============================================================================
 ; VARIABLES GLOBALES (declaradas aqui para que exfs/xsh/exit las encuentren)
 ; =============================================================================
