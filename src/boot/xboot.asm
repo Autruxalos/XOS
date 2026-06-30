@@ -38,19 +38,32 @@ xboot_inicio:
     xor ax, ax
     mov es, ax
 
-    ; 3. Buscar el archivo del Kernel ("XKERNEL XEXE") en el Directorio Raíz
-    mov si, nombre_kernel       ; Puntero a la cadena de búsqueda "XKERNEL XEXE"
-    mov di, 0x9000              ; Puntero al búfer cargado del Root Directory
-    call exfs_buscar_archivo
-    
-    cmp ax, 0xFFFF              ; ¿Se encontró el archivo en la tabla?
-    je xboot_error              ; Si no, congelar el Phenom
+    ; 1. Cargar la Tabla de Asignación (Omitido/Mantener si es necesario, o saltar al Kernel)
+    ; [Opcional: puedes comentar la carga de XFAT y Root si vas a ir directo al Kernel]
 
-    ; 4. Cargar los bloques lógicos de datos del Kernel en RAM (Dirección 0x10000)
-    mov bx, 0x1000              
+    ; =============================================================================
+    ; NUEVO PASO 3 Y 4: CARGA DIRECTA PLANA DEL KERNEL (BYPASS EXFS)
+    ; =============================================================================
+    ; Sabemos que el Kernel se escribe en el Sector 1 físico mediante 'dd seek=1'
+    ; Vamos a leer 66 sectores consecutivos directamente desde el sector 1.
+    
+    mov ax, 1                   ; Sector lógico inicial (Sector 1)
+    mov cl, 66                  ; Cantidad de sectores a leer (Sectores 1 al 66)
+    
+    mov bx, 0x1000              ; Segmento destino 
     mov es, bx
-    xor bx, bx                  ; ES:BX = 0x1000:0x0000 (0x10000 física)
-    call cargar_cadena_bloques
+    xor bx, bx                  ; ES:BX = 0x1000:0x0000 (0x10000 Física)
+    
+    call xboot_leer_sector      ; Cargar el Kernel directo a la RAM sin pasar por exFS
+    
+    ; Restaurar segmento ES a cero por seguridad
+    xor ax, ax
+    mov es, ax
+
+    ; =============================================================================
+    ; 5. Salto de ejecución directo al Kernel cargado
+    ; =============================================================================
+    jmp 0x1000:0x0000           ; ¡Control total al Exokernel!
 
     ; 5. Salto de ejecución directo al Kernel cargado (Salida de la BIOS)
     xor ax, ax
