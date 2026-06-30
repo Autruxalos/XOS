@@ -109,7 +109,7 @@ nombre_kernel       db "XKERNEL XEXE" ; Firma rígida de 11 bytes
 
 ; Incluye las funciones matemáticas 'exfs_buscar_archivo' y 'cargar_cadena_bloques'
 ; Nota: Al compilar desde la raíz del proyecto, la ruta desde src/boot/ hacia src/drivers/ es esta:
-%include "../drivers/exfs.asm"
+%include "src/drivers/exfs.asm"
 
 ; =============================================================================
 ; TABLA DE PARTICIONES MBR ESTÁNDAR (Falsa, para engañar a BIOS quisquillosas)
