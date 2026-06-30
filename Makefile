@@ -36,7 +36,7 @@ image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init-exfs.bi
 	@echo "====== XOS COMPILADO ======"
 
 run: image
-	qemu-system-x86_64 -drive format=raw,file=build/XOS.img
+qemu-system-i386 -cpu 486 -drive format=raw,file=build/XOS.img -d int,cpu_reset -no-reboot -no-shutdown
 
 run64: image
 	qemu-system-x86_64 -drive format=raw,file=$(IMAGE) -m 64M -cpu qemu64
