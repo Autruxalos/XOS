@@ -1,189 +1,119 @@
-
 ; =============================================================================
-; XBOOT - Bootloader XOS  [XSPEC-0001]
-; Correccion: usa INT 13h AH=42h (LBA extendido) en vez de CHS
-; El CHS con AL=255 falla porque cruza cabezas. LBA no tiene ese limite.
+; XBOOT — Cargador de Arranque MBR Profesional en Modo LBA (16-bits Modo Real)
 ; =============================================================================
 [BITS 16]
-[ORG 0x7C00]
- 
+[ORG 0x7C00]                ; Dirección estándar de carga del MBR por la BIOS
+
 xboot_main:
-    cli
-    xor ax, ax
+    ; --- BLINDAJE INICIAL DE ENTORNOS ---
+    cli                     ; Desactivar interrupciones durante la fase crítica
+    xor ax, ax              ; Limpiar registros de segmento a 0x0000
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00
- 
-    ; Guardar drive ANTES de cualquier otra cosa
+    mov sp, 0x7C00          ; Pila segura creciendo hacia abajo desde el MBR
+
+    ; Guardar el identificador de la unidad de arranque entregado por la BIOS
     mov [BOOT_DRIVE], dl
- 
-    ; Modo texto limpio
+
+    ; Limpiar pantalla (Video Modo 3 estándar)
     mov ax, 0x0003
     int 0x10
- 
-    mov si, MSG_LOADING
+
+    ; Mostrar mensaje inicial
+    mov si, MSG_BOOT
     call bios_print
- 
-    ; -----------------------------------------------------------------------
-    ; Verificar soporte INT 13h extendido (LBA)
-    ; Si el BIOS no lo soporta, caer a CHS limitado
-    ; -----------------------------------------------------------------------
-    mov ah, 0x41
-    mov bx, 0x55AA
+
+; --- COMPROBACIÓN DE EXTENSIONES LBA ---
+check_lba_extensions:
+    mov ah, 0x41            ; Función: Verificar extensiones de la BIOS
+    mov bx, 0x55AA          ; Valor mágico de prueba
     mov dl, [BOOT_DRIVE]
     int 0x13
-    jc  .use_chs            ; CF=1 → no hay LBA extendido
-    cmp bx, 0xAA55
-    jne .use_chs
- 
-    ; -----------------------------------------------------------------------
-    ; LBA extendido: cargar sectores 1..64 (32 KB) en 0x0000:0x9000
-    ; DAP (Disk Address Packet) en stack — 16 bytes
-    ; -----------------------------------------------------------------------
+    jc .no_lba              ; Si el Flag de Acarreo (CF) se activa, no hay soporte LBA
+    cmp bx, 0xAA55          ; Verificar si el valor mágico regresó invertido
+    jne .no_lba
+    
+    ; Mostrar confirmación de Modo LBA
     mov si, MSG_LBA
     call bios_print
- 
-    push dword 0            ; LBA alto (32 bits superiores = 0)
-    push dword 1            ; LBA bajo  = sector 1 (justo despues del MBR)
-    push word  0x9000       ; offset destino
-    push word  0x0000       ; segmento destino  → fisico 0x9000
-    push word  64           ; sectores a leer (32 KB — suficiente para kernel)
-    push word  0x0010       ; tamano DAP = 16 bytes
- 
-    mov si, sp              ; SI apunta al DAP
-    mov ah, 0x42
-    mov dl, [BOOT_DRIVE]
-    int 0x13
- 
-    add sp, 16              ; limpiar DAP del stack
- 
-    jc  .error              ; CF=1 → error de lectura
- 
-    jmp .loaded
- 
-    ; -----------------------------------------------------------------------
-    ; Fallback CHS: carga de a 63 sectores (1 pista completa) a la vez
-    ; Maxima carga segura sin cruzar cabezas
-    ; -----------------------------------------------------------------------
-.use_chs:
-    mov si, MSG_CHS
+    jmp load_kernel_lba
+
+.no_lba:
+    mov si, MSG_ERR_LBA
     call bios_print
- 
-    ; Primera llamada: sectores 2-64 (cabeza 0, cilindro 0)
-    ; Limit: 63 sectores por llamada en CHS
-    mov ax, 0x0000
-    mov es, ax
-    mov bx, 0x9000          ; destino: ES:BX = 0x0000:0x9000
- 
-    mov ah, 0x02
-    mov al, 63              ; 63 sectores (pista completa, seguro)
-    mov ch, 0               ; cilindro 0
-    mov dh, 0               ; cabeza 0
-    mov cl, 2               ; sector CHS 2 (sector 1 LBA)
+    jmp fault_halt
+
+; --- CARGA DEL KERNEL MEDIANTE EXTENSIONES INT 0x13 ---
+load_kernel_lba:
+    mov ah, 0x42            ; Función BIOS: Lectura extendida del disco LBA
     mov dl, [BOOT_DRIVE]
+    mov si, disk_packet     ; DS:SI debe apuntar a la estructura DAP
     int 0x13
-    jc  .error
- 
-    ; Segunda llamada: siguientes 63 sectores (cabeza 1)
-    ; ES:BX avanza 63*512 = 32256 bytes
-    add bx, 63 * 512
- 
-    mov ah, 0x02
-    mov al, 63
-    mov ch, 0
-    mov dh, 1               ; cabeza 1
-    mov cl, 1               ; sector 1 de la cabeza 1
-    mov dl, [BOOT_DRIVE]
-    int 0x13
-    ; Ignorar error aqui — con 63 sectores ya basta para el kernel
- 
-.loaded:
-    mov si, MSG_OK
+    jc .disk_error          ; Si falla la lectura física, saltar al manejador de errores
+
+    ; Confirmación de carga exitosa
+    mov si, MSG_LOADED
     call bios_print
- 
-    ; Saltar al kernel
+
+    ; --- EL SALTO MAESTRO AL KERNEL ---
+    ; Se realiza un salto lejano (Far Jump) para inicializar CS a 0x0000 y saltar a 0x9000
     jmp 0x0000:0x9000
- 
-.error:
-    mov si, MSG_ERROR
+
+.disk_error:
+    mov si, MSG_ERR_DISK
     call bios_print
-    ; Mostrar codigo de error AH
-    push ax
-    mov  al, ah
-    call print_hex_byte
-    pop  ax
-.halt:
-    cli
-    hlt
-    jmp .halt
- 
-; -----------------------------------------------------------------------
-; bios_print — imprime DS:SI via BIOS TTY
-; -----------------------------------------------------------------------
-bios_print:
-    mov ah, 0x0E
-    mov bx, 0x0007
+    jmp fault_halt
+
+; --- RUTINAS AUXILIARES ---
+fault_halt:
+    mov si, MSG_HALT
+    call bios_print
 .loop:
-    lodsb
-    or  al, al
-    jz  .done
-    int 0x10
+    cli
+    hlt                     ; Detener el procesador de forma permanente
     jmp .loop
-.done:
-    ret
- 
-; -----------------------------------------------------------------------
-; print_hex_byte — imprime AL como 2 digitos hex (ayuda a debuggear)
-; -----------------------------------------------------------------------
-print_hex_byte:
+
+bios_print:
     push ax
     push bx
-    push cx
-    mov  cx, ax
-    ; nibble alto
-    mov  al, cl
-    shr  al, 4
-    call .nibble
-    ; nibble bajo
-    mov  al, cl
-    and  al, 0x0F
-    call .nibble
-    ; newline
-    mov  ah, 0x0E
-    mov  al, 0x0D
-    int  0x10
-    mov  al, 0x0A
-    int  0x10
-    pop  cx
-    pop  bx
-    pop  ax
+    mov ah, 0x0E            ; Servicio de Teletipo de la BIOS
+    xor bh, bh              ; Página de video 0
+    mov bl, 0x07            ; Atributo de texto estándar (Gris/Blanco)
+.print_loop:
+    lodsb                   ; Carga el byte apuntado por DS:SI en AL e incrementa SI
+    test al, al             ; ¿Es el fin de la cadena (byte 0)?
+    jz .print_done
+    int 0x10                ; Llamar a la interrupción de video de la BIOS
+    jmp .print_loop
+.print_done:
+    pop bx
+    pop ax
     ret
-.nibble:
-    cmp  al, 10
-    jl   .digit
-    add  al, 'A' - 10
-    jmp  .print
-.digit:
-    add  al, '0'
-.print:
-    mov  ah, 0x0E
-    mov  bx, 0x0007
-    int  0x10
-    ret
- 
-; -----------------------------------------------------------------------
-; Datos
-; -----------------------------------------------------------------------
-BOOT_DRIVE  db 0
-MSG_LOADING db 'XOS Boot - Cargando...', 13, 10, 0
-MSG_LBA     db 'Modo LBA', 13, 10, 0
-MSG_CHS     db 'Modo CHS', 13, 10, 0
-MSG_OK      db 'Kernel cargado! Saltando...', 13, 10, 0
-MSG_ERROR   db 'ERROR lectura disco! Codigo: ', 0
- 
-; -----------------------------------------------------------------------
-; Firma MBR obligatoria
-; -----------------------------------------------------------------------
-times 510 - ($ - $$) db 0
-dw 0xAA55
+
+; =============================================================================
+; ESTRUCTURA FÍSICA: DISK ADDRESS PACKET (DAP)
+; =============================================================================
+align 4
+disk_packet:
+    db 0x10                 ; Tamaño del paquete DAP (Siempre 16 bytes o 0x10)
+    db 0x00                 ; Reservado (Siempre 0)
+    dw 32                   ; ¡CRÍTICO! Número de sectores a leer (32 sectores = 16 KB)
+    dw 0x9000               ; Offset de destino en la memoria RAM
+    dw 0x0000               ; Segmento de destino en la memoria RAM (0x0000:0x9000)
+    dq 1                    ; LBA Inicial: Empezar en el Sector 1 (El Sector 0 es este MBR)
+
+; =============================================================================
+; SECCIÓN DE CADENAS DE TEXTO (DATOS DE CONTROL)
+; =============================================================================
+BOOT_DRIVE:   db 0
+MSG_BOOT:     db "XOS Boot - Cargando...", 13, 10, 0
+MSG_LBA:      db "Modo LBA detectado.", 13, 10, 0
+MSG_LOADED:   db "Kernel cargado! Saltando...", 13, 10, 0
+MSG_ERR_LBA:  db "ERROR: La BIOS no soporta extensiones LBA nativas.", 13, 10, 0
+MSG_ERR_DISK: db "ERROR: Fallo critico en la lectura fisica de sectores.", 13, 10, 0
+MSG_HALT:     db "Sistema detenido de forma segura.", 13, 10, 0
+
+; --- FIRMA OBLIGATORIA DE ARRANQUE MBR MÁGICA ---
+times 510 - ($ - $$) db 0   ; Rellenar con ceros exactos hasta el byte 510
+dw 0xAA55                   ; Firma de arranque ejecutable por la BIOS
