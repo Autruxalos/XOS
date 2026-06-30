@@ -42,23 +42,25 @@ xboot_inicio:
     ; [Opcional: puedes comentar la carga de XFAT y Root si vas a ir directo al Kernel]
 
     ; =============================================================================
-    ; NUEVO PASO 3 Y 4: CARGA DIRECTA PLANA DEL KERNEL (BYPASS EXFS)
+    ; PASO 3 Y 4 ORIGINALES: CARGA MEDIANTE EXFS
     ; =============================================================================
-    ; Sabemos que el Kernel se escribe en el Sector 1 físico mediante 'dd seek=1'
-    ; Vamos a leer 66 sectores consecutivos directamente desde el sector 1.
-    
-    mov ax, 1                   ; Sector lógico inicial (Sector 1)
-    mov cl, 66                  ; Cantidad de sectores a leer (Sectores 1 al 66)
-    
-    mov bx, 0x1000              ; Segmento destino 
+    ; 3. Buscar el archivo del Kernel ("XKERNEL XEXE") en el Directorio Raíz
+    call exfs_buscar_archivo
+    cmp ax, 0xFFFF
+    je xboot_error   ; Si no lo encuentra, parpadea en la rutina de error
+
+    ; 4. Cargar los bloques lógicos de datos del Kernel en RAM
+    mov bx, 0x1000  
     mov es, bx
-    xor bx, bx                  ; ES:BX = 0x1000:0x0000 (0x10000 Física)
-    
-    call xboot_leer_sector      ; Cargar el Kernel directo a la RAM sin pasar por exFS
+    xor bx, bx       ; ES:BX = 0x1000:0x0000 (Dirección física 0x10000)
+    call cargar_cadena_bloques 
     
     ; Restaurar segmento ES a cero por seguridad
     xor ax, ax
     mov es, ax
+
+    ; 5. Salto de ejecución directo al Kernel cargado
+    jmp 0x1000:0x0000
 
     ; =============================================================================
     ; 5. Salto de ejecución directo al Kernel cargado
