@@ -1,5 +1,5 @@
 ; =============================================================================
-; XKERNEL — Núcleo Híbrido Multiarquitectura Unificado (16 / 32 / 64 bits)
+; XKERNEL — Núcleo Exokernel Unificado (Corregido y Estabilizado)
 ; =============================================================================
 org 0x9000
 
@@ -8,25 +8,27 @@ org 0x9000
 ; =============================================================================
 [BITS 16]
 _start:
-    ; Desactivar interrupciones durante la transición crítica de hardware
-    cli                         
+    cli                         ; Desactivar interrupciones críticas inmediatamente
 
-    ; Sincronizar selectores de datos al segmento base cero (0x0000)
+    ; Sincronizar registros de segmento a cero absoluto (Entorno Plano Inicial)
     xor ax, ax                  
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov sp, stack_top           ; Pila temporal para operaciones en 16 bits
+    mov sp, stack_top           ; Pila temporal de 16/32 bits
 
-    ; Transición hacia Modo Protegido de 32 bits
-    lgdt [gdt32_desc]           ; Cargar la GDT de transición de 32 bits
+    ; Cargar la Tabla Global de Descriptores Unificada (GDT)
+    lgdt [gdt_desc]
+
+    ; Activar el bit de Modo Protegido (PE) en el Registro de Control CR0
     mov eax, cr0
-    or eax, 1                   ; Setear el bit PE (Protected Mode Enable)
+    or eax, 1                   
     mov cr0, eax
 
-    ; JUMP LEJANO (Far Jump): Limpia la cola de ejecución de 16 bits y salta a 32 bits
+    ; JUMP LEJANO (Far Jump): Fuerza a la CPU a cambiar a Modo Protegido de 32 bits.
+    ; El selector 0x08 apunta al Descriptor de Código de 32 bits en nuestra GDT.
     jmp 0x08:kernel_stage_32
 
 ; =============================================================================
@@ -34,63 +36,63 @@ _start:
 ; =============================================================================
 [BITS 32]
 kernel_stage_32:
-    ; Configurar los nuevos selectores de datos de 32 bits plano (GDT de transición)
+    ; Recargar los selectores de datos con el segmento de datos de 32 bits (0x10)
     mov ax, 0x10                
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov esp, stack_top          ; Reasignar la pila en el entorno de 32 bits
+    mov esp, stack_top          ; Confirmar la pila en el entorno de 32 bits
 
-    ; --- REIGNICIÓN Y LIMPIEZA FÍSICA DE TABLAS DE PÁGINAS ---
+    ; --- LIMPIEZA DE MEMORIA PARA TABLAS DE PÁGINAS ---
     mov edi, page_table_p4
     xor eax, eax
-    mov ecx, 3072               ; Limpiar las 3 tablas de un solo golpe (3 * 1024 dwords)
+    mov ecx, 3072               ; Limpiar P4, P3 y P2 (3 * 1024 dwords)
     rep stosd
 
-    ; --- CONSTRUCCIÓN DEL ÁRBOL DE PAGINACIÓN DE 64 BITS ---
+    ; --- CONSTRUCCIÓN DEL ÁRBOL DE PAGINACIÓN DE MODO LARGO ---
     mov eax, page_table_p3
-    or eax, 0b11                ; Flags: Presente + Escritura
+    or eax, 0b11                ; Flags de Hardware: Presente + Escritura
     mov [page_table_p4], eax
 
     mov eax, page_table_p2
-    or eax, 0b11                ; Flags: Presente + Escritura
+    or eax, 0b11                ; Flags de Hardware: Presente + Escritura
     mov [page_table_p3], eax
 
-    mov eax, 0b10000011         ; 2MB Huge Page (Identity Mapped)
+    mov eax, 0b10000011         ; Huge Page de 2MB mapeada por identidad
     mov [page_table_p2], eax
 
-    ; Cargar el directorio de páginas raíz en el registro de control CR3
+    ; Cargar la dirección física de la PML4 (P4) en el registro CR3
     mov eax, page_table_p4
     mov cr3, eax
 
-    ; HABILITAR PAE (Physical Address Extension) en CR4
+    ; Activar PAE (Physical Address Extension) en CR4
     mov eax, cr4
     or eax, 1 << 5
     mov cr4, eax
 
-    ; HABILITAR LONG MODE EN EL REGISTRO MSR EFER (Extended Feature Enable Register)
+    ; Habilitar Long Mode en el Registro de Modelo Específico (MSR) EFER
     mov ecx, 0xC0000080
     rdmsr
     or eax, 1 << 8              ; Activar bit LME (Long Mode Enable)
     wrmsr
 
-    ; ACTIVAR PAGINACIÓN DE HARDWARE DEFINITIVA EN CR0
+    ; Activar Paginación de Hardware definitiva en CR0
     mov eax, cr0
     or eax, 1 << 31             ; Activar bit PG (Paging)
     mov cr0, eax
 
-    ; --- JUMP DEFINITIVO A MODO LARGO (64-BITS) ---
-    lgdt [gdt64_desc]           ; Cargar la GDT definitiva de 64 bits
-    jmp 0x18:kernel_stage_64    ; Saltar usando el Selector de Código de Modo Largo
+    ; --- JUMP LEJANO DEFINITIVO A MODO LARGO (64-BITS) ---
+    ; El selector 0x18 apunta al Descriptor de Código de 64 bits en nuestra GDT.
+    jmp 0x18:kernel_stage_64
 
 ; =============================================================================
-; STAGE 3: ENTORNO NATIVO DE 64 BITS
+; STAGE 3: ENTORNO NATIVO DE 64 BITS (EXOKERNEL NUCLEUS)
 ; =============================================================================
 [BITS 64]
 kernel_stage_64:
-    ; Inicializar selectores de datos en cero plano para arquitectura de 64 bits
+    ; Inicializar selectores de datos en modo plano nativo de 64 bits
     xor ax, ax
     mov ds, ax
     mov es, ax
@@ -99,7 +101,7 @@ kernel_stage_64:
     mov ss, ax
     mov rsp, stack_top_64       ; Pila definitiva de 64 bits en alta memoria
 
-    ; Forzar limpieza visual de pantalla e iniciar el ejecutor del sistema
+    ; Limpiar buffer visual e iniciar ejecutor primario
     call xk_clear_screen
     call exit_main_executor
 
@@ -108,19 +110,19 @@ kernel_stage_64:
     jmp .infinite_halt
 
 ; =============================================================================
-; INCLUSIÓN DE MÓDULOS DE APLICACIÓN Y SISTEMA (COMPATIBILIDAD XSPEC)
+; INCLUSIÓN DE SUBMÓDULOS (COMPATIBILIDAD XSPEC)
 ; =============================================================================
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
 
 ; =============================================================================
-; DRIVERS VGA Y FUNCIONES DEL NÚCLEO (64-BITS NATIVO)
+; DRIVERS VGA Y CONTROL VISUAL (64-BITS)
 ; =============================================================================
 global xk_clear_screen
 xk_clear_screen:
     mov rcx, 2000
     mov rdi, 0xB8000
-    mov ax, 0x0F20              ; Espacio vacío con atributo por defecto
+    mov ax, 0x0F20              ; Espacio vacío, color gris estándar
     rep stosw
     mov word [cursor_pos], 0
     ret
@@ -185,7 +187,7 @@ xk_readline:
 .mock_input: db "pwd", 0, 0
 
 ; =============================================================================
-; ESTRUCTURAS DE HARDWARE COMBINADAS (TABLAS Y DESCRIPTORES GDT)
+; ESTRUCTURAS DE HARDWARE UNIFICADAS (TABLAS DE PÁGINAS Y GDT GLOBAL)
 ; =============================================================================
 align 4096
 page_table_p4: times 4096 db 0
@@ -193,36 +195,28 @@ page_table_p3: times 4096 db 0
 page_table_p2: times 4096 db 0
 
 align 8
-; --- GDT Temporal de Transición (32-bits) ---
-gdt32_start:
-    dq 0x0000000000000000       ; Descriptor Nulo
-    dq 0x00CF9A000000FFFF       ; Selector de Código de 32 bits (0x08)
-    dq 0x00CF92000000FFFF       ; Selector de Datos de 32 bits (0x10)
-gdt32_end:
-gdt32_desc:
-    dw gdt32_end - gdt32_start - 1
-    dq gdt32_start
+; --- TABLA GLOBAL DE DESCRIPTORES (GDT UNIFICADA) ---
+; Una sola estructura limpia evita colisiones de punteros en binarios planos.
+gdt_start:
+    dq 0x0000000000000000       ; [0x00] Descriptor Nulo
+    dq 0x00CF9A000000FFFF       ; [0x08] Código de 32 bits (Base=0, Límite=4GB)
+    dq 0x00CF92000000FFFF       ; [0x10] Datos de 32 bits (Base=0, Límite=4GB)
+    dq 0x00209A0000000000       ; [0x18] Código de 64 bits (Modo Largo Nativo)
+gdt_end:
 
-; --- GDT Definitiva de Modo Largo (64-bits) ---
-gdt64_start:
-    dq 0x0000000000000000       ; Descriptor Nulo
-    dq 0x0000000000000000       ; Reservado
-    dq 0x0000000000000000       ; Reservado
-    dq 0x00209A0000000000       ; Selector de Código de 64 bits (0x18)
-gdt64_end:
-gdt64_desc:
-    dw gdt64_end - gdt64_start - 1
-    dq gdt64_start
+gdt_desc:
+    dw gdt_end - gdt_start - 1
+    dq gdt_start
 
-; --- VARIABLES GLOBALES DEL SISTEMA ---
+; --- VARIABLES GLOBALES ---
 align 16
 cursor_pos:         dw 0
 exfs_cur_dir_name:  times 32 db 0
 exfs_cur_dir_lba:   dq 0
 readline_buf:       times 256 db 0
 
-; --- PILAS DE EJECUCIÓN ---
+; --- PILAS DE EXECUCIÓN ---
 times 1024 db 0
-stack_top:                      ; Pila de 16/32 bits base
+stack_top:                      ; Pila compartida para 16/32 bits
 times 2048 db 0
-stack_top_64:                   ; Pila nativa de 64 bits
+stack_top_64:                   ; Pila nativa definitiva para 64 bits
