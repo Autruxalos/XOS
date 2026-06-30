@@ -51,8 +51,8 @@ image: $(BUILD_DIR)/xboot.bin $(BUILD_DIR)/xkernel.bin $(BUILD_DIR)/init-exfs.bi
 
 # Ejecución en entorno nativo i486 (Modo protegido 32-bits emulado)
 run: image
-	@echo "[QEMU] Iniciando emulación i486..."
-	qemu-system-i386 -cpu 486 -drive format=raw,file=$(IMAGE) -d int,cpu_reset -no-reboot -no-shutdown
+	@echo "[QEMU] Iniciando emulación compatible con Modo Largo (x86_64)..."
+	qemu-system-x86_64 -drive format=raw,file=$(IMAGE) -m 64M -cpu qemu64 -d int,cpu_reset -no-reboot -no-shutdown
 
 # Ejecución alternativa en entorno x86_64
 run64: image
