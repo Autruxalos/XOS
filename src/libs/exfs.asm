@@ -1,11 +1,13 @@
 ; =============================================================================
-; COMPONENTE EXFS - GESTOR DE RUTAS NATIVAS '|'
+; EXFS DRIVER - GESTOR DE RUTAS Y OBJETOS
 ; =============================================================================
 [BITS 64]
 
 ; exfs_parse_custom_path
-; Convierte una ruta como '|users|root|' en parámetros legibles aislados
-; Entrada: RSI = Puntero a la cadena de texto de la ruta
+; Convierte una ruta como '|users|root|' aislando los nombres.
+; ADVERTENCIA: RSI debe apuntar a un buffer en la RAM (.bss), NO a una 
+; constante en .text, ya que esta función modifica la cadena original.
+global exfs_parse_custom_path
 exfs_parse_custom_path:
     push rsi
     push rax
@@ -15,6 +17,7 @@ exfs_parse_custom_path:
     jz .done
     cmp al, '|'
     jne .loop
+    
     ; Sustituir el carácter pipe por un cero binario para delimitar el token
     mov byte [rsi-1], 0
     jmp .loop
@@ -23,10 +26,15 @@ exfs_parse_custom_path:
     pop rsi
     ret
 
-; Inyección del comando make-dir usando tus estructuras internas del SuperBlock
+; Inyección del comando make-dir
+global exfs_create_directory_slot
 exfs_create_directory_slot:
-    ; Entrada: RSI = Nombre del nuevo directorio
-    ; Usa el slot libre mapeado en tu función de asignación exfs_alloc_slot
-    mov bl, 1                   ; Tipo: XOBJ_DIR (1)
-    call exfs_make_obj
+    ; Entrada: RSI = Puntero al nombre del nuevo directorio
+    ; Preparar los registros para crear el objeto en memoria
+    
+    mov bl, XOBJ_TYPE_DIR       ; Tipo 1 (Directorio)
+    ; call exfs_make_obj        ; (Descomentar cuando implementemos esta función)
+    
+    ; Simulamos un retorno exitoso temporalmente
+    xor rax, rax
     ret
