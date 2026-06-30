@@ -1,119 +1,109 @@
-; =============================================================================
-; XBOOT — Cargador de Arranque MBR Profesional en Modo LBA (16-bits Modo Real)
-; =============================================================================
-[BITS 16]
-[ORG 0x7C00]                ; Dirección estándar de carga del MBR por la BIOS
+org 0x7C00
+bits 16
 
-xboot_main:
-    ; --- BLINDAJE INICIAL DE ENTORNOS ---
-    cli                     ; Desactivar interrupciones durante la fase crítica
-    xor ax, ax              ; Limpiar registros de segmento a 0x0000
+; =============================================================================
+; ENTRADA DE CONFIGURACIÓN DE HARDWARE (MINIMA Y PRECISA)
+; =============================================================================
+xboot_inicio:
+    cli                         ; Deshabilitar interrupciones inmediatamente
+    xor ax, ax                  ; Limpieza absoluta de registros de segmento
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00          ; Pila segura creciendo hacia abajo desde el MBR
+    mov sp, 0x7C00              ; Ubicación de la pila segura
 
-    ; Guardar el identificador de la unidad de arranque entregado por la BIOS
-    mov [BOOT_DRIVE], dl
+    mov [unidad_arranque], dl   ; Guardar el número de unidad que nos dio la BIOS (Ej: 0x80)
 
-    ; Limpiar pantalla (Video Modo 3 estándar)
-    mov ax, 0x0003
-    int 0x10
+    ; 1. Cargar el Directorio Raíz de EXFS en la memoria RAM (Sector 33 físico)
+    ; Lo pondremos temporalmente en la dirección 0x9000
+    mov ax, 33                  ; Sector lógico del Root Directory en EXFS
+    mov cx, 1                   ; Leer 1 sector (suficiente para el arranque inicial)
+    mov bx, 0x9000              ; Destino en RAM: 0x0000:0x9000
+    call xboot_leer_sector
 
-    ; Mostrar mensaje inicial
-    mov si, MSG_BOOT
-    call bios_print
-
-; --- COMPROBACIÓN DE EXTENSIONES LBA ---
-check_lba_extensions:
-    mov ah, 0x41            ; Función: Verificar extensiones de la BIOS
-    mov bx, 0x55AA          ; Valor mágico de prueba
-    mov dl, [BOOT_DRIVE]
-    int 0x13
-    jc .no_lba              ; Si el Flag de Acarreo (CF) se activa, no hay soporte LBA
-    cmp bx, 0xAA55          ; Verificar si el valor mágico regresó invertido
-    jne .no_lba
+    ; 2. Cargar la Tabla de Asignación (XFAT) en la memoria RAM (Sector 1 físico)
+    ; La mapearemos en la dirección 0x20000 (Segmento 0x2000:0x0000)
+    mov ax, 1                   ; Sector lógico 1 (Inicio de XFAT)
+    mov cx, 32                  ; Leer los 32 sectores que mide la XFAT
+    mov bx, 0x2000              
+    mov es, bx
+    xor bx, bx                  ; Destino en RAM: 0x2000:0x0000 (0x20000 física)
+    call xboot_leer_sector
     
-    ; Mostrar confirmación de Modo LBA
-    mov si, MSG_LBA
-    call bios_print
-    jmp load_kernel_lba
+    ; Restaurar ES a cero
+    xor ax, ax
+    mov es, ax
 
-.no_lba:
-    mov si, MSG_ERR_LBA
-    call bios_print
-    jmp fault_halt
+    ; 3. Buscar el archivo del Kernel ("XKERNEL XEXE") en el Directorio Raíz
+    mov si, nombre_kernel       ; Puntero a la cadena de búsqueda
+    mov di, 0x9000              ; Puntero al buffer del Root Directory
+    call exfs_buscar_archivo
+    
+    cmp ax, 0xFFFF              ; ¿Se encontró el archivo?
+    je xboot_error              ; Si no, detener el Phenom
 
-; --- CARGA DEL KERNEL MEDIANTE EXTENSIONES INT 0x13 ---
-load_kernel_lba:
-    mov ah, 0x42            ; Función BIOS: Lectura extendida del disco LBA
-    mov dl, [BOOT_DRIVE]
-    mov si, disk_packet     ; DS:SI debe apuntar a la estructura DAP
-    int 0x13
-    jc .disk_error          ; Si falla la lectura física, saltar al manejador de errores
+    ; 4. Cargar los bloques del Kernel en la RAM destino (0x10000)
+    ; Pasar de Bloque Lógico EXFS a Sector Físico se hace dentro de la rutina
+    mov bx, 0x1000              
+    mov es, bx
+    xor bx, bx                  ; Destino en RAM: 0x1000:0x0000 (0x10000 física)
+    call cargar_cadena_bloques
 
-    ; Confirmación de carga exitosa
-    mov si, MSG_LOADED
-    call bios_print
+    ; 5. Salto de ejecución directo al Kernel cargado
+    ; Detenemos la BIOS y transferimos el control absoluto al Exokernel
+    xor ax, ax
+    mov es, ax
+    jmp 0x1000:0x0000           ; Ejecutar XKERNEL en hardware real
 
-    ; --- EL SALTO MAESTRO AL KERNEL ---
-    ; Se realiza un salto lejano (Far Jump) para inicializar CS a 0x0000 y saltar a 0x9000
-    jmp 0x0000:0x9000
+xboot_error:
+.bucle:
+    hlt                         ; Detener el procesador
+    jmp .bucle
 
-.disk_error:
-    mov si, MSG_ERR_DISK
-    call bios_print
-    jmp fault_halt
-
-; --- RUTINAS AUXILIARES ---
-fault_halt:
-    mov si, MSG_HALT
-    call bios_print
-.loop:
-    cli
-    hlt                     ; Detener el procesador de forma permanente
-    jmp .loop
-
-bios_print:
+; =============================================================================
+; DRIVER MÍNIMO DE DISCO (BIOS INT 13h)
+; Entrada: AX = Sector Lógico, CX = Cantidad de sectores, ES:BX = Destino RAM
+; =============================================================================
+xboot_leer_sector:
     push ax
     push bx
-    mov ah, 0x0E            ; Servicio de Teletipo de la BIOS
-    xor bh, bh              ; Página de video 0
-    mov bl, 0x07            ; Atributo de texto estándar (Gris/Blanco)
-.print_loop:
-    lodsb                   ; Carga el byte apuntado por DS:SI en AL e incrementa SI
-    test al, al             ; ¿Es el fin de la cadena (byte 0)?
-    jz .print_done
-    int 0x10                ; Llamar a la interrupción de video de la BIOS
-    jmp .print_loop
-.print_done:
+    push cx
+    
+    ; Conversión simplificada de Sector Lógico a LBA/CHS para BIOS antiguas
+    ; (Asumiendo geometría estándar de un USB de pruebas emulado como disco duro)
+    mov dx, ax
+    mov cx, ax
+    shl cx, 6
+    and cl, 0x3F
+    inc cl                      ; Sector en CL
+    
+    mov ch, dl
+    shr ch, 2                   ; Cilindro en CH
+    
+    mov dh, dl
+    and dh, 0x01                ; Cabeza en DH
+    
+    mov dl, [unidad_arranque]   ; Recuperar unidad física
+    mov ax, 0x0201              ; AH=02 (Leer), AL=01 (1 sector por llamada)
+    int 0x13
+    
+    pop cx
     pop bx
     pop ax
     ret
 
 ; =============================================================================
-; ESTRUCTURA FÍSICA: DISK ADDRESS PACKET (DAP)
+; ARCHIVOS INCLUIDOS (Estructuras de tu Sistema Operativo)
 ; =============================================================================
-align 4
-disk_packet:
-    db 0x10                 ; Tamaño del paquete DAP (Siempre 16 bytes o 0x10)
-    db 0x00                 ; Reservado (Siempre 0)
-    dw 32                   ; ¡CRÍTICO! Número de sectores a leer (32 sectores = 16 KB)
-    dw 0x9000               ; Offset de destino en la memoria RAM
-    dw 0x0000               ; Segmento de destino en la memoria RAM (0x0000:0x9000)
-    dq 1                    ; LBA Inicial: Empezar en el Sector 1 (El Sector 0 es este MBR)
+%include "exfs.asm"             ; Incluye 'exfs_buscar_archivo' y 'cargar_cadena_bloques'
 
 ; =============================================================================
-; SECCIÓN DE CADENAS DE TEXTO (DATOS DE CONTROL)
+; DATOS RÍGIDOS DE CONTROL
 ; =============================================================================
-BOOT_DRIVE:   db 0
-MSG_BOOT:     db "XOS Boot - Cargando...", 13, 10, 0
-MSG_LBA:      db "Modo LBA detectado.", 13, 10, 0
-MSG_LOADED:   db "Kernel cargado! Saltando...", 13, 10, 0
-MSG_ERR_LBA:  db "ERROR: La BIOS no soporta extensiones LBA nativas.", 13, 10, 0
-MSG_ERR_DISK: db "ERROR: Fallo critico en la lectura fisica de sectores.", 13, 10, 0
-MSG_HALT:     db "Sistema detenido de forma segura.", 13, 10, 0
+align 2
+unidad_arranque db 0
+nombre_kernel   db "XKERNEL XEXE" ; Nombre exacto de 11 bytes fijados en EXFS
 
-; --- FIRMA OBLIGATORIA DE ARRANQUE MBR MÁGICA ---
-times 510 - ($ - $$) db 0   ; Rellenar con ceros exactos hasta el byte 510
-dw 0xAA55                   ; Firma de arranque ejecutable por la BIOS
+; Relleno y firma obligatoria del Master Boot Record (MBR)
+times 510-($-$$) db 0
+dw 0xAA55
