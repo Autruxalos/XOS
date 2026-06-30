@@ -49,9 +49,8 @@ directories:
 # COMPILACIÓN DE COMPONENTES BASE (Bajo nivel y Drivers)
 # -----------------------------------------------------------------------------
 
-# Sector de arranque (Alineado estrictamente a 512 bytes)
-$(XBOOT): $(SRC_BOOT)/xboot.asm $(SRC_DRIVERS)/exfs.asm
-	$(ASM) -f bin $< -o $@
+bin/xboot.bin: src/boot/xboot.asm
+	nasm -I./ -f bin src/boot/xboot.asm -o bin/xboot.bin
 
 # El Exokernel (Compilado nativo para el modo largo del Phenom II)
 $(XKERNEL): $(SRC_KERNEL)/xkernel.asm
