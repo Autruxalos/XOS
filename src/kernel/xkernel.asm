@@ -3,6 +3,11 @@
 ; =============================================================================
 org 0x9000
 
+; Direcciones fijas absolutas en RAM para evitar desalineación por crecimiento de código
+PAGE_TABLE_P4 equ 0x10000
+PAGE_TABLE_P3 equ 0x11000
+PAGE_TABLE_P2 equ 0x12000
+
 ; =============================================================================
 ; STAGE 1: ENTORNO DE MODO REAL (16-BITS)
 ; =============================================================================
@@ -34,7 +39,6 @@ _start:
 
 ; =============================================================================
 ; TABLA GLOBAL DE DESCRIPTORES (GDT UNIFICADA)
-; Colocada estratégicamente aquí arriba para garantizar su carga física en RAM
 ; =============================================================================
 align 8
 gdt_start:
@@ -46,7 +50,7 @@ gdt_end:
 
 gdt_desc:
     dw gdt_end - gdt_start - 1  ; Límite de la GDT (2 bytes)
-    dd gdt_start                ; Base de la GDT (4 bytes) - ¡Crucial para 16-bits!
+    dd gdt_start                ; Base de la GDT (4 bytes)
 
 ; =============================================================================
 ; STAGE 2: ENTORNO DE MODO PROTEGIDO (32-BITS)
@@ -63,25 +67,25 @@ kernel_stage_32:
     mov esp, 0x8FFF             ; Mantener la pila en zona segura
 
     ; --- LIMPIEZA VISUAL Y FÍSICA DE TABLAS DE PÁGINAS ---
-    mov edi, page_table_p4
+    mov edi, PAGE_TABLE_P4
     xor eax, eax
-    mov ecx, 3072               ; Limpiar P4, P3 y P2 de golpe
+    mov ecx, 3072               ; Limpiar 12KB (P4, P3 y P2) en la RAM fija
     rep stosd
 
     ; --- MAPEO DE HARDWARE DE MODO LARGO ---
-    mov eax, page_table_p3
+    mov eax, PAGE_TABLE_P3
     or eax, 0b11                ; Flags: Presente + Escritura
-    mov [page_table_p4], eax
+    mov [PAGE_TABLE_P4], eax
 
-    mov eax, page_table_p2
+    mov eax, PAGE_TABLE_P2
     or eax, 0b11                ; Flags: Presente + Escritura
-    mov [page_table_p3], eax
+    mov [PAGE_TABLE_P3], eax
 
-    mov eax, 0b10000011         ; Huge Page de 2MB mapeada por identidad
-    mov [page_table_p2], eax
+    mov eax, 0b10000011         ; Huge Page de 2MB mapeada por identidad (Bit 7: PS=1)
+    mov [PAGE_TABLE_P2], eax
 
     ; Inyectar directorio raíz en CR3
-    mov eax, page_table_p4
+    mov eax, PAGE_TABLE_P4
     mov cr3, eax
 
     ; Habilitar PAE (Physical Address Extension) en CR4
@@ -215,11 +219,3 @@ readline_buf:       times 256 db 0
 align 16
 times 2048 db 0
 stack_top_64:
-
-; =============================================================================
-; AREA DE PAGINACIÓN DE MEGAMEMORIA (AL FINAL DEL ARCHIVO)
-; =============================================================================
-align 4096
-page_table_p4: times 4096 db 0
-page_table_p3: times 4096 db 0
-page_table_p2: times 4096 db 0
