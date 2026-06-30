@@ -1,7 +1,8 @@
 org 0x100                       ; Formato ejecutable estándar de 16 bits
 bits 16
 
-%include "src/include/exfs.inc"
+; Modificación de ruta relativa para la nueva estructura modular
+%include "../include/exfs.inc"
 
 xsh_main:
     ; Mostrar banner de bienvenida
@@ -21,27 +22,29 @@ xsh_main:
     cmp byte [si], 0
     je .prompt_loop
 
-    ; --- ENRUTADOR DE COMANDOS LÓGICOS ---
+    ; =============================================================================
+    ; ENRUTADOR DE COMANDOS LÓGICOS DESCRIPTIVOS
+    ; =============================================================================
     
-    ; 1. Comando: show-files (Reemplaza a 'ls' o 'dir')
+    ; 1. Comando: show-files (Lista el directorio)
     mov si, buffer_input
     mov di, cmd_show_files
     call sys_compare_string
     jc .ejecutar_xfl
 
-    ; 2. Comando: edit-file (Reemplaza a 'nano' o 'vi')
+    ; 2. Comando: edit-file (Abre el editor de texto nativo)
     mov si, buffer_input
     mov di, cmd_edit_file
     call sys_compare_string
     jc .ejecutar_xdt
 
-    ; 3. Comando: show-info (Ejecuta exofetch)
+    ; 3. Comando: show-info (Ejecuta el visor de especificaciones del sistema)
     mov si, buffer_input
     mov di, cmd_show_info
     call sys_compare_string
     jc .ejecutar_exofetch
 
-    ; 4. Comando: clear-screen (Reemplaza a 'clear' o 'cls')
+    ; 4. Comando: clear-screen (Limpia la terminal actual)
     mov si, buffer_input
     mov di, cmd_clear
     call sys_compare_string
@@ -53,28 +56,23 @@ xsh_main:
     jmp .prompt_loop
 
 ; =============================================================================
-; SECCIÓN DE EJECUCIÓN DE APLICACIONES COMPATIBLES
+; MANEJADORES DE SALTOS MECÁNICOS DIRECTOS
 ; =============================================================================
 
 .ejecutar_xfl:
-    ; Llama directamente al Administrador de Archivos mapeado en memoria
-    ; Si xfl.xexe está precargado en una dirección conocida, saltamos a ella
-    call 0x2000:0x0000          ; Dirección de ejemplo asignada a XFL
+    call 0x2000:0x0000          ; Dirección de segmento asignada a XFL
     jmp .prompt_loop
 
 .ejecutar_xdt:
-    call 0x3000:0x0000          ; Dirección de ejemplo asignada a XDT
+    call 0x3000:0x0000          ; Dirección de segmento asignada a XDT
     jmp .prompt_loop
 
 .ejecutar_exofetch:
-    ; Nota técnica: Tu archivo exofetch.asm actual está marcado como [BITS 64].
-    ; Para correrlo desde aquí, necesitarás recompilar la lógica de exofetch 
-    ; en 16 bits o usar esta subrutina intermedia si ya migraste el procesador.
-    call 0x4000:0x0000          
+    call 0x4000:0x0000          ; Dirección de segmento asignada a EXOFETCH
     jmp .prompt_loop
 
 .ejecutar_clear:
-    mov ax, 0x0003              ; Reinicializa el modo de texto VGA limpiando la pantalla
+    mov ax, 0x0003              ; Reinicializa el modo de texto VGA limpiando pantalla
     int 0x10
     jmp .prompt_loop
 
@@ -117,11 +115,11 @@ sys_read_line:
     jmp .bucle_teclado
 
 .procesar_borrado:
-    jcxz .bucle_teclado         ; Si el buffer está vacío, no hacer nada
+    jcxz .bucle_teclado         ; Si el buffer está vacío, omitir accion
     dec di
     dec cx
     mov byte [di], 0
-    ; Efecto visual de borrado en la terminal
+    ; Efecto visual de retroceso físico en pantalla de texto
     mov ah, 0x0E
     mov al, 8
     int 0x10
@@ -141,22 +139,22 @@ sys_read_line:
     ret
 
 sys_compare_string:
-    ; Compara las cadenas en SI y DI. Si son iguales, activa el Carry Flag (CF = 1)
+    ; Compara las cadenas en SI y DI. Si coinciden, activa el Carry Flag (CF = 1)
 .bucle:
     mov al, [si]
     mov bl, [di]
     cmp al, bl
     jne .no_iguales
-    or al, al                   ; ¿Llegamos al final de la cadena (0)?
+    or al, al                   ; ¿Final de cadena?
     jz .iguales
     inc si
     inc di
     jmp .bucle
 .no_iguales:
-    clc                         ; Limpiar Carry Flag (No coincide)
+    clc                         ; Limpiar Carry Flag
     ret
 .iguales:
-    stc                         ; Activar Carry Flag (Coincidencia exacta)
+    stc                         ; Activar Carry Flag
     ret
 
 ; =============================================================================
@@ -172,9 +170,9 @@ cmd_edit_file   db "edit-file", 0
 cmd_show_info   db "show-info", 0
 cmd_clear       db "clear-screen", 0
 
-; Espacio reservado para los comandos futuros que mencionaste (Plantillas)
+; Reservas semánticas futuras
 cmd_make_dir    db "make-dir", 0
 cmd_remove_dir  db "remove-dir", 0
 
 align 4
-buffer_input    times 64 db 0   ; Buffer estricto de 64 bytes para comandos
+buffer_input    times 64 db 0   ; Buffer rígido de 64 bytes para entrada limpia
