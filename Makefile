@@ -66,7 +66,7 @@ $(XEXIT): $(SRC_INIT)/exit.asm
 
 # Gestor de paquetes nativo (xpkg.asm en src/apps/ o src/tools/ según tu árbol)
 # NOTA: Ajusta la ruta si xpkg.asm está en otra subcarpeta
-$(XPKG): $(SRC_APPS)/xpkg.asm
+$(XPKG): src/pkg/xpkg.asm
 	$(ASM) -f bin $< -o $@
 
 # Soporte del formato ejecutable nativo (xexe.asm)
