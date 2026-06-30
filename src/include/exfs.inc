@@ -1,34 +1,24 @@
 ; =============================================================================
-; EXFS - ESTRUCTURAS FÍSICAS UNIFICADAS DEL SISTEMA DE ARCHIVOS
+; ARCHIVO: src/include/exfs.inc
+; Estructuras rígidas de EXFS para herramientas de 16 bits
 ; =============================================================================
-; Este archivo se incluye con %include para que los módulos de 16, 32 y 64 bits 
-; conozcan la arquitectura del disco virtual sin duplicar código.
 
-; --- EL SUPERBLOQUE (Debe medir exactamente 512 bytes / 1 Sector) ---
-struc exfs_superblock
-    .magic          resb 4      ; Firma mágica 'EXFS'
-    .version        resw 1      ; Versión del sistema de archivos
-    .total_sectors  resd 1      ; Tamaño total del disco en sectores lógicos
-    .kernel_start   resd 1      ; LBA de inicio del XKERNEL
-    .kernel_sectors resd 1      ; Cantidad de sectores que ocupa el XKERNEL
-    .root_index     resd 1      ; LBA donde empieza el directorio Raíz (|)
-    .block_size     resw 1      ; Tamaño estándar (512 bytes)
-    .label          resb 32     ; Nombre del volumen (Ej. "XOS_MAIN_DRIVE")
-    .reserved       resb 456    ; Relleno calculado: 512 - 56 = 456 bytes
-endstruc
+%ifndef EXFS_INC
+%define EXFS_INC
 
-; --- OBJETO DE ARCHIVO/DIRECTORIO (Debe medir exactamente 64 bytes) ---
-; Caben exactamente 8 objetos (XOBJ) por cada sector del disco
-struc exfs_xobj
-    .name           resb 32     ; Nombre del archivo o directorio
-    .type           resb 1      ; 0 = Archivo, 1 = Directorio
-    .attributes     resw 1      ; Permisos y flags
-    .start_lba      resd 1      ; LBA donde residen los datos de este archivo
-    .size           resd 1      ; Tamaño en bytes del archivo
-    .parent_lba     resd 1      ; LBA del directorio padre
-    .reserved       resb 17     ; Relleno calculado: 64 - 47 = 17 bytes
-endstruc
+; Geometría fija del sistema de archivos
+EXFS_FIRMA          equ 0x00        ; 8 bytes
+EXFS_SECTORES_FAT   equ 0x08        ; 2 bytes
+EXFS_ENTRADAS_ROOT  equ 0x0A        ; 2 bytes
+EXFS_BYTES_SECTOR   equ 0x0C        ; 2 bytes
+EXFS_BLOQUE_INICIO  equ 0x0E        ; 2 bytes (Por defecto sector 65)
 
-; Constantes globales para la Shell
-XOBJ_TYPE_FILE  equ 0
-XOBJ_TYPE_DIR   equ 1
+; Desplazamientos dentro de una entrada de directorio (32 bytes fijos)
+DIR_NOMBRE          equ 0           ; 8 bytes
+DIR_EXTENSION       equ 8           ; 3 bytes
+DIR_ATRIBUTO        equ 11          ; 1 byte
+DIR_BLOQUE_INICIO   equ 12          ; 2 bytes
+DIR_TAMANO          equ 14          ; 4 bytes
+DIR_RESERVADO       equ 18          ; 14 bytes
+
+%endif
