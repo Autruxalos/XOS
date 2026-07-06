@@ -8,6 +8,7 @@ CC       = gcc
 LD       = ld
 DD       = dd
 RM       = rm -f
+QEMU     = qemu-system-x86_64
 
 # Directorios del proyecto
 SRC_BOOT    = src/boot
@@ -36,10 +37,15 @@ XDT         = $(BIN_DIR)/xdt.bin
 # Imagen de almacenamiento final
 XDISK_IMG   = $(BIN_DIR)/xos_dist.img
 
-.PHONY: all clean directories image
+.PHONY: all clean directories image run
 
 # Regla de compilación total de dependencias
 all: directories $(XBOOT) $(XKERNEL) $(XEXIT) $(XPKG) $(XEXE) $(XSH) $(XFL) $(XDT) $(XINSTALLER) image
+
+# REGLA NUEVA: Compila todo y lo ejecuta directamente en QEMU emulando un Phenom
+run: all
+	@echo "Lanzando XOS en QEMU (Emulando arquitectura AMD Phenom)..."
+	$(QEMU) -cpu phenom -m 2G -drive format=raw,file=$(XDISK_IMG)
 
 # Crear directorio de binarios si no existe
 directories:
@@ -108,7 +114,6 @@ image:
 	# Esto fuerza una geometría virtual CHS limpia para BIOS quisquilleras.
 	$(DD) if=/dev/zero of=$(XDISK_IMG) bs=512 count=131072 status=none
 
-	# Sector 0: Master Boot Record (XBOOT)
 	# Sector 0: Master Boot Record (XBOOT) con conv=notrunc para preservar el tamaño
 	$(DD) if=$(XBOOT) of=$(XDISK_IMG) bs=512 count=1 conv=notrunc status=none
 
