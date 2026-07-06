@@ -43,9 +43,10 @@ XDISK_IMG   = $(BIN_DIR)/xos_dist.img
 all: directories $(XBOOT) $(XKERNEL) $(XEXIT) $(XPKG) $(XEXE) $(XSH) $(XFL) $(XDT) $(XINSTALLER) image
 
 # REGLA NUEVA: Compila todo y lo ejecuta directamente en QEMU emulando un Phenom
+# REGLA ACTUALIZADA: Usa KVM para heredar las características reales de la CPU sin romper el entorno
 run: all
-	@echo "Lanzando XOS en QEMU (Emulando arquitectura AMD Phenom)..."
-	$(QEMU) -cpu phenom -m 2G -drive format=raw,file=$(XDISK_IMG)
+	@echo "Lanzando XOS en QEMU (Aceleración KVM habilitada)..."
+	$(QEMU) -cpu host -enable-kvm -m 2G -drive format=raw,file=$(XDISK_IMG)
 
 # Crear directorio de binarios si no existe
 directories:
