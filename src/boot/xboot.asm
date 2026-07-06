@@ -125,10 +125,8 @@ db 0xFE, 0xFF, 0xFF             ; CHS fin falso
 dd 0x00000001                   ; LBA de inicio (Sector 1, donde vive la XFAT)
 dd 0x000FFFFF                   ; Tamaño virtual total en sectores
 
-; Entradas de partición 2, 3 y 4 vacías (16 bytes * 3 = 48 bytes)
+; ... (Viene de las entradas de partición 2, 3 y 4 vacías)
 times 48 db 0
 
-; Firma de validación obligatoria del MBR
+; Firma de validación obligatoria del MBR (Bytes 510 y 511)
 dw 0xAA55
-times 512 - 2 - ($ - $$) db 0 ; Rellenar con ceros el resto del sector
-dw 0xAA55                     ; Firma de arranque obligatoria para BIOS MBR
