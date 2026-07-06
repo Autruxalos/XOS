@@ -113,7 +113,25 @@ image:
 	$(DD) if=$(XBOOT) of=$(XDISK_IMG) bs=512 count=1 conv=notrunc status=none
 
 	# Sector 65: El Exokernel principal
-@@ -131,9 +128,9 @@
+	$(DD) if=$(XKERNEL) of=$(XDISK_IMG) bs=512 seek=65 conv=notrunc status=none
+
+	# --- SECTORES DE COMPONENTES DEL SISTEMA ---
+	# Sector 120: El módulo de salida (EXIT)
+	$(DD) if=$(XEXIT) of=$(XDISK_IMG) bs=512 seek=120 conv=notrunc status=none
+
+	# Sector 140: El gestor de paquetes (XPKG)
+	$(DD) if=$(XPKG) of=$(XDISK_IMG) bs=512 seek=140 conv=notrunc status=none
+
+	# Sector 160: El cargador binario (XEXE)
+	$(DD) if=$(XEXE) of=$(XDISK_IMG) bs=512 seek=160 conv=notrunc status=none
+
+	# --- SECTORES DE APLICACIONES ---
+	# Sector 200: Consola de comandos (XSH)
+	$(DD) if=$(XSH) of=$(XDISK_IMG) bs=512 seek=200 conv=notrunc status=none
+
+	# Sector 250: Explorador de archivos (XFL)
+	$(DD) if=$(XFL) of=$(XDISK_IMG) bs=512 seek=250 conv=notrunc status=none
+
 	# Sector 300: Editor de texto (XDT)
 	$(DD) if=$(XDT) of=$(XDISK_IMG) bs=512 seek=300 conv=notrunc status=none
 
