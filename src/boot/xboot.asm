@@ -50,7 +50,7 @@ xboot_inicio:
     mov bx, 0x1000  
     mov es, bx
     xor bx, bx                      ; ES:BX = 0x1000:0x0000 (Dirección física 0x10000)
-    ;call cargar_cadena_bloques  
+    call cargar_cadena_bloques      ; <--- ACTIVADO: Carga real de los sectores a la RAM
     
     ; Restaurar segmento ES a cero por seguridad
     xor ax, ax
@@ -108,7 +108,6 @@ unidad_arranque     db 0
 nombre_kernel       db "XKERNEL XEXE" ; Firma rígida de 11 bytes
 
 ; Incluye las funciones matemáticas 'exfs_buscar_archivo' y 'cargar_cadena_bloques'
-; Nota: Al compilar desde la raíz del proyecto, la ruta desde src/boot/ hacia src/drivers/ es esta:
 %include "src/kernel/drivers/exfs.asm"
 
 ; =============================================================================
@@ -125,7 +124,7 @@ db 0xFE, 0xFF, 0xFF             ; CHS fin falso
 dd 0x00000001                   ; LBA de inicio (Sector 1, donde vive la XFAT)
 dd 0x000FFFFF                   ; Tamaño virtual total en sectores
 
-; ... (Viene de las entradas de partición 2, 3 y 4 vacías)
+; Entradas de partición 2, 3 y 4 vacías (16 bytes * 3 = 48 bytes)
 times 48 db 0
 
 ; Firma de validación obligatoria del MBR (Bytes 510 y 511)
