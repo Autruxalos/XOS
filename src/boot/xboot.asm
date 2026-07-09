@@ -39,18 +39,16 @@ xboot_inicio:
     mov es, ax
 
     ; =============================================================================
-    ; PASOS 3 Y 4: CARGA MEDIANTE SISTEMA DE ARCHIVOS EXFS (DISEÑO ORIGINAL)
+    ; PASOS 3 Y 4: CARGA DIRECTA DESDE EL SECTOR REAl (ALINEADO CON TU MAKEFILE)
     ; =============================================================================
-    ; 3. Buscar el archivo del Kernel ("XKERNEL XEXE") en el Directorio Raíz
-    call exfs_buscar_archivo
-    cmp ax, 0xFFFF
-    je xboot_error                  ; Si no lo encuentra, error (pantalla parpadeante)
-
-    ; 4. Cargar los bloques lógicos de datos del Kernel en RAM
+    ; Cargamos el Exokernel directamente desde el Sector 65 usando tu driver LBA.
+    ; Esto evita buscar en EXFS y arregla el error de "symbol not defined".
+    mov ax, 65                      ; Sector lógico inicial (Sector 65 del Makefile)
+    mov cl, 40                      ; Cantidad de sectores a cargar (Cargamos ~20KB)
     mov bx, 0x1000  
     mov es, bx
     xor bx, bx                      ; ES:BX = 0x1000:0x0000 (Dirección física 0x10000)
-    call cargar_cadena_bloques      ; <--- ACTIVADO: Carga real de los sectores a la RAM
+    call xboot_leer_sector
     
     ; Restaurar segmento ES a cero por seguridad
     xor ax, ax
@@ -107,7 +105,7 @@ dap_packet:
 unidad_arranque     db 0
 nombre_kernel       db "XKERNEL XEXE" ; Firma rígida de 11 bytes
 
-; Incluye las funciones matemáticas 'exfs_buscar_archivo' y 'cargar_cadena_bloques'
+; Incluye el archivo exfs por si el resto de tus componentes lo necesitan
 %include "src/kernel/drivers/exfs.asm"
 
 ; =============================================================================
