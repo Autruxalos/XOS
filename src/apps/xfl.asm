@@ -1,4 +1,3 @@
-org 0x100                       ; Formato ejecutable plano de 16 bits (Estilo .COM)
 bits 16
 
 %include "src/include/exfs.inc"
