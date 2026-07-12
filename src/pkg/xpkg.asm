@@ -1,5 +1,3 @@
-org 0x100                       ; Formato estándar ejecutable tipo .COM (Máximo 64K)
-
 ; =============================================================================
 ; CONFIGURACIÓN DE ARQUITECTURA UNIVERSAL PARA XPKG EN NASM
 ; =============================================================================
