@@ -1,3 +1,6 @@
+; =============================================================================
+; XKERNEL - Versión Estable Unificada
+; =============================================================================
 org 0x9000
 
 [BITS 16]
@@ -8,51 +11,64 @@ kernel_16_entry:
     mov es, ax
     mov ss, ax
     mov sp, 0x7C00
-    mov si, msg16
-    call print16
-    lgdt [gdt32]
+
+    mov si, msg_16
+    call print_16
+
+    lgdt [gdt32_desc]
     mov eax, cr0
     or eax, 1
     mov cr0, eax
-    jmp 0x08:kernel_32
+    jmp 0x08:kernel_32_entry
 
-print16:
-.loop lodsb
+print_16:
+.loop:
+    lodsb
     or al, al
     jz .done
     mov ah, 0x0E
     int 0x10
     jmp .loop
-.done ret
-msg16 db '16->',0
+.done:
+    ret
 
+msg_16 db 'XOS 16-bit -> ', 0
+
+; =============================================================================
 [BITS 32]
-kernel_32:
+kernel_32_entry:
     mov ax, 0x10
     mov ds, ax
     mov ss, ax
-    mov esp, stack32
-    mov esi, msg32
-    call print32
-    lgdt [gdt64]
-    jmp 0x18:kernel_64
+    mov esp, stack_top_32
 
-print32:
-.loop lodsb
+    mov esi, msg_32
+    call print_32
+
+    lgdt [gdt64_desc]
+    jmp 0x18:kernel_64_entry
+
+print_32:
+.loop:
+    lodsb
     or al, al
     jz .done
     mov ah, 0x0E
     int 0x10
     jmp .loop
-.done ret
-msg32 db '32->',0
+.done:
+    ret
 
+msg_32 db '32-bit -> ', 0
+
+; =============================================================================
 [BITS 64]
-kernel_64:
+kernel_64_entry:
     xor rax, rax
     mov ds, ax
+    mov es, ax
     mov ss, ax
-    mov rsp, stack64
+    mov rsp, stack_top_64
 
     mov rdi, 0xB8000
     mov rax, 0x1F581F4F
@@ -60,21 +76,37 @@ kernel_64:
     mov rax, 0x1F53201F
     stosq
 
-    call exit_main
+    call exit_main_executor
 
-halt:
+xk_halt:
     hlt
-    jmp halt
+    jmp xk_halt
 
 ; GDTs
-gdt32 dw 23, gdt32_start, 0
-gdt32_start dq 0, 0xCF9A000000FFFF, 0xCF92000000FFFF
+align 8
+gdt32_desc:
+    dw gdt32_end - gdt32_start - 1
+    dd gdt32_start
+gdt32_start:
+    dq 0
+    dq 0x00CF9A000000FFFF
+    dq 0x00CF92000000FFFF
+gdt32_end:
 
-gdt64 dw 15, gdt64_start, 0
-gdt64_start dq 0, 0x209A0000000000
+gdt64_desc:
+    dw gdt64_end - gdt64_start - 1
+    dd gdt64_start
+gdt64_start:
+    dq 0
+    dq 0x00209A0000000000
+gdt64_end:
 
-stack32 times 512 db 0
-stack64 times 1024 db 0
+align 16
+stack_bottom_32: times 512 db 0
+stack_top_32:
+stack_bottom_64: times 1024 db 0
+stack_top_64:
 
+; Inclusiones (una sola vez)
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
