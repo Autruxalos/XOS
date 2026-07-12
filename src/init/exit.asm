@@ -1,16 +1,8 @@
-; =============================================================================
-; EXIT - Inicializador Mínimo y Estable
-; =============================================================================
-[BITS 64]
-
+[BITS 16]
 exit_main_executor:
-    ; Mensaje simple en pantalla
-    mov rsi, msg_exit
-    call xk_print
+    mov si, msg
+    call print_16
+    ; Llamar a XSH en 16-bit
+    jmp xsh_interactive_loop
 
-    ; Llamar a la shell
-    call xsh_interactive_loop
-
-    ret
-
-msg_exit db " [EXIT] Sistema inicializado correctamente.", 10, 0
+msg db "EXIT OK", 13, 10, 0
