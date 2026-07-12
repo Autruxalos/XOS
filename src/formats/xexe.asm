@@ -5,7 +5,6 @@
 
 ; Definimos el origen de memoria virtual estándar para las aplicaciones de usuario.
 ; En nuestro exokernel, las aplicaciones se mapean por defecto en la dirección 0x500000.
-org 0x500000
 bits 64                         ; Las aplicaciones corren en el Modo Largo nativo del Phenom
 
 ; =============================================================================
