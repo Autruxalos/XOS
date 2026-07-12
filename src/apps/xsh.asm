@@ -2,7 +2,7 @@ org 0x100                       ; Formato ejecutable estándar de 16 bits
 bits 16
 
 ; Modificación de ruta relativa para la nueva estructura modular
-%include "../include/exfs.inc"
+%include "src/include/exfs.inc"
 
 xsh_main:
     ; Mostrar banner de bienvenida
