@@ -1,5 +1,5 @@
 ; =============================================================================
-; XKERNEL - Multi-Ancho (16/32/64 bits) Estable
+; XKERNEL - Base Unificada Simple (16/32/64) sin conflictos
 ; =============================================================================
 org 0x9000
 
@@ -15,7 +15,6 @@ kernel_16_entry:
     mov si, msg_16
     call print_16
 
-    ; Transición a 32 bits
     lgdt [gdt32_desc]
     mov eax, cr0
     or eax, 1
@@ -46,7 +45,6 @@ kernel_32_entry:
     mov esi, msg_32
     call print_32
 
-    ; Transición a 64 bits
     lgdt [gdt64_desc]
     jmp 0x18:kernel_64_entry
 
@@ -84,7 +82,6 @@ xk_halt:
     hlt
     jmp xk_halt
 
-; =============================================================================
 ; GDTs
 align 8
 gdt32_desc:
@@ -110,10 +107,10 @@ stack_top_32:
 stack_bottom_64: times 1024 db 0
 stack_top_64:
 
-; Stubs
+; Stubs mínimos
 xk_print:
     ret
 
-; Inclusiones
+; Inclusiones limpias
 %include "src/init/exit.asm"
 %include "src/apps/xsh.asm"
