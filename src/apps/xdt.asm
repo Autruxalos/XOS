@@ -1,4 +1,3 @@
-org 0x100
 bits 16
 
 xdt_inicio:
