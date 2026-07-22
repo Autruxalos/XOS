@@ -2,7 +2,7 @@
 ; XKERNEL — XOS Exokernel [XSPEC-0004]
 ; Arquitectura: x86-64, cargado por XBOOT propio (NO GRUB/Multiboot2)
 ; Cadena de arranque: XBOOT (0x7C00) -> XKERNEL (0x9000, 16-bit)
-;                   16-bit -> 32-bit -> 64-bit -> EXIT -> XSH
+;                     -> 32-bit -> 64-bit -> EXIT -> XSH
 ; =============================================================================
 [BITS 16]
 org 0x9000
