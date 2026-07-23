@@ -23,7 +23,6 @@ xboot_main:
     call bios_print
 
     ; Verificar soporte INT 13h extendido (LBA)
-    mov ah, 0x41
     mov bx, 0x55AA
     mov dl, [BOOT_DRIVE]
     int 0x13
@@ -47,6 +46,10 @@ xboot_main:
     int 0x13
     add sp, 16
     jc  .error
+
+    mov si, MSG_DEBUG_LBA_OK
+    call bios_print
+
     jmp .loaded
 
 .use_chs:
@@ -78,6 +81,12 @@ xboot_main:
 .loaded:
     mov si, MSG_OK
     call bios_print
+
+   mov ah, 0x0E
+   mov al, 'Y'
+   mov bx, 0x0007
+   int 0x10
+
     jmp 0x0000:0x9000
 
 .error:
@@ -141,6 +150,8 @@ MSG_LBA     db 'Modo LBA', 13, 10, 0
 MSG_CHS     db 'Modo CHS', 13, 10, 0
 MSG_OK      db 'Kernel cargado! Saltando...', 13, 10, 0
 MSG_ERROR   db 'ERROR lectura disco! Codigo: ', 0
+MSG_DEBUG_LBA_OK db 'K', 0
 
 times 510 - ($ - $$) db 0
 dw 0xAA55
+

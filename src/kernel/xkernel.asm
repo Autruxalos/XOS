@@ -8,6 +8,10 @@
 org 0x9000
 
 kernel_16_entry:
+    mov ah, 0x0E
+    mov al, 'X'
+    mov bx, 0x0007
+    int 0x10
     cli
     xor ax, ax
     mov ds, ax
