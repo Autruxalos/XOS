@@ -33,10 +33,13 @@ xboot_main:
     mov si, MSG_LBA
     call bios_print
 
+    ; IMPORTANTE: el DAP requiere OFFSET en +4 y SEGMENTO en +6.
+    ; Como el stack crece hacia abajo, lo ultimo en pushearse queda
+    ; en la direccion mas baja -> hay que pushear SEGMENTO antes que OFFSET.
     push dword 0             ; LBA alto
     push dword 1             ; LBA bajo = sector 1 (justo tras el MBR)
-    push word  0x9000        ; offset destino
     push word  0x0000        ; segmento destino -> fisico 0x9000
+    push word  0x9000        ; offset destino
     push word  64            ; sectores a leer (32 KB)
     push word  0x0010        ; tamano DAP
 
