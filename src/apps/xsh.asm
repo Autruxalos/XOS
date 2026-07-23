@@ -194,6 +194,6 @@ cmd_exit_sprusr  db "exit", 0
 buffer_linea     times 64 db 0
 
 ; Incluir los módulos de las aplicaciones
-%include "src/apps/exofetch.asm"
+%include "src/apps/xsh/exofetch.asm"
 %include "src/apps/xdt.asm"
 %include "src/apps/xfl.asm"
